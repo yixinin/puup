@@ -14,7 +14,6 @@ type Proxy struct {
 }
 
 func NewProxy(port ...uint16) (*Proxy, error) {
-
 	var ports = make(map[uint16]struct{})
 	for _, v := range port {
 		ports[v] = struct{}{}

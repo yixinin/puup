@@ -1,4 +1,4 @@
-package pnet
+package connection
 
 import (
 	"net"

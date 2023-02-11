@@ -1,4 +1,4 @@
-package pnet
+package connection
 
 import (
 	"net"
@@ -17,24 +17,13 @@ const (
 	Closed  DcStatus = "closed"
 )
 
-type ConnInfo struct {
-	Key string
-	ID  uint16
-}
-
-type ReuseNetConn interface {
-	net.Conn
-	LockUse() bool
-	UnlockUse()
-	Used() bool
-}
-
 type DataChannel struct {
 	sync.RWMutex
 
-	Type        PeerType
+	peerType PeerType
+
 	backendName string
-	fontEndName string
+	fontendName string
 
 	dc    *webrtc.DataChannel
 	open  chan struct{}
@@ -47,30 +36,15 @@ type DataChannel struct {
 	status DcStatus
 }
 
-func (c *DataChannel) LocalAddr() net.Addr {
-	switch c.Type {
-	case Offer:
-		return NewLabelAddr(c.fontEndName, c.dc.Label())
-	case Answer:
-		return NewLabelAddr(c.backendName, c.dc.Label())
-	}
-	return nil
-}
-func (c *DataChannel) RemoteAddr() net.Addr {
-	switch c.Type {
-	case Offer:
-		return NewLabelAddr(c.backendName, c.dc.Label())
-	case Answer:
-		return NewLabelAddr(c.fontEndName, c.dc.Label())
-	}
-	return nil
+func (c *DataChannel) Label() string {
+	return c.dc.Label()
 }
 
 func (c *DataChannel) GetStatus() DcStatus {
 	return c.status
 }
 
-func (c *DataChannel) setStatus(status DcStatus) bool {
+func (c *DataChannel) SetStatus(status DcStatus) bool {
 	c.Lock()
 	defer c.Unlock()
 	if status == c.status {
@@ -92,7 +66,7 @@ func (c *DataChannel) IsEnd() bool {
 	return c.IsClose() || c.ended
 }
 
-func NewDataChannel(dc *webrtc.DataChannel, dataEvent chan string) *DataChannel {
+func NewDataChannel(dc *webrtc.DataChannel, laddr, raddr net.Addr, dataEvent chan string) *DataChannel {
 	dcConn := &DataChannel{
 		dc:        dc,
 		open:      make(chan struct{}, 1),
@@ -103,17 +77,42 @@ func NewDataChannel(dc *webrtc.DataChannel, dataEvent chan string) *DataChannel 
 	}
 	dc.OnOpen(func() {
 		logrus.Infof("channel %s opened", dc.Label())
-		if dcConn.setStatus(Idle) {
+		if dcConn.SetStatus(Idle) {
 			close(dcConn.open)
 		}
 	})
 	dc.OnClose(func() {
-		if dcConn.setStatus(Closed) {
+		if dcConn.SetStatus(Closed) {
 			close(dcConn.close)
 		}
 	})
 	dc.OnMessage(dcConn.OnMessage)
 	return dcConn
+}
+
+func (c *DataChannel) LocalAddr() net.Addr {
+	switch c.peerType {
+	case Offer:
+		switch c.chanType {
+		case Ssh:
+			return NewSshAddr(c.fontendName)
+		case File:
+			return NewFileAddr(c.fontendName, idx)
+		}
+		return NewLabelAddr(c.fontendName, c.dc.Label())
+	case Answer:
+		return NewLabelAddr(c.backendName, c.dc.Label())
+	}
+	return nil
+}
+func (c *DataChannel) RemoteAddr() net.Addr {
+	switch c.peerType {
+	case Offer:
+		return NewLabelAddr(c.backendName, c.dc.Label())
+	case Answer:
+		return NewLabelAddr(c.fontendName, c.dc.Label())
+	}
+	return nil
 }
 
 func (c *DataChannel) Read(data []byte) (n int, err error) {

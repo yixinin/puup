@@ -8,19 +8,20 @@ import (
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/connection"
 	"github.com/yixinin/puup/ice"
 )
 
 type Listener struct {
 	sync.RWMutex
 
-	sigClient *SignalingClient
+	sigClient *connection.SignalingClient
 
 	frontIn chan string
 	onClose chan string
 	onConn  chan net.Conn
 
-	peers map[string]*Peer
+	peers map[string]*connection.Peer
 
 	isClose bool
 	close   chan struct{}
@@ -28,11 +29,11 @@ type Listener struct {
 
 func NewListener(name, serverAddr string) *Listener {
 	lis := &Listener{
-		sigClient: NewAnswerClient(serverAddr, name),
+		sigClient: connection.NewAnswerClient(serverAddr, name),
 		frontIn:   make(chan string, 10),
 		onClose:   make(chan string, 1),
 		onConn:    make(chan net.Conn, 10),
-		peers:     make(map[string]*Peer, 1),
+		peers:     make(map[string]*connection.Peer, 1),
 		close:     make(chan struct{}, 1),
 	}
 	go lis.loop()
@@ -50,13 +51,13 @@ func (l *Listener) Accept() (net.Conn, error) {
 	}
 }
 
-func (l *Listener) AddPeer(key string, p *Peer) {
+func (l *Listener) AddPeer(key string, p *connection.Peer) {
 	l.Lock()
 	defer l.Unlock()
 	l.peers[key] = p
 }
 
-func (l *Listener) GetPeer(key string) (*Peer, bool) {
+func (l *Listener) GetPeer(key string) (*connection.Peer, bool) {
 	l.RLock()
 	defer l.RUnlock()
 	p, ok := l.peers[key]
@@ -112,7 +113,7 @@ FOR:
 			}
 			c := l.sigClient.Clone()
 			c.FrontendKey = key
-			p := NewAnswerPeer(pc, c, l.onConn)
+			p := connection.NewAnswerPeer(pc, c, l.onConn)
 			l.AddPeer(key, p)
 			go func() {
 				if err := p.Connect(); err != nil {

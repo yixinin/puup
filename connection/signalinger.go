@@ -1,4 +1,4 @@
-package pnet
+package connection
 
 import (
 	"bytes"
@@ -16,10 +16,15 @@ import (
 )
 
 type Signalinger interface {
-	Connect(sdp webrtc.SessionDescription)
-	ConnectionEvent() chan webrtc.SessionDescription
-	GetRemoteSdp() webrtc.SessionDescription
-	GetRemoteIceCandidates() []webrtc.ICECandidate
+	SendSdp(ctx context.Context, sdp webrtc.SessionDescription) error
+	SendCandidate(ctx context.Context, ice *webrtc.ICECandidate) error
+	RemoteSdp() chan webrtc.SessionDescription
+	RemoteIceCandidates() chan webrtc.ICECandidate
+}
+type SigConfig struct {
+	ServerAddr  string
+	BackendName string
+	FrontendKey string
 }
 
 type SignalingClient struct {

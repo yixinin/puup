@@ -1,22 +1,27 @@
-package pnet
+package connection
 
 import (
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
+
+	"github.com/yixinin/puup/stderr"
 )
 
 type ChannelType string
 
 const (
-	Proxy ChannelType = "proxy"
-	Web   ChannelType = "web"
-	File  ChannelType = "file"
-	Ssh   ChannelType = "ssh"
+	Proxy     ChannelType = "proxy"
+	Web       ChannelType = "web"
+	File      ChannelType = "file"
+	Ssh       ChannelType = "ssh"
+	Keepalive ChannelType = "keepalive"
 )
 
 func (t ChannelType) String() string {
 	switch t {
-	case Proxy, Web, File, Ssh:
+	case Proxy, Web, File, Ssh, Keepalive:
 		return string(t)
 	}
 	return "unknown"
@@ -74,6 +79,8 @@ func (a *LabelAddr) Label() string {
 		return fmt.Sprintf("%s.%d", a.Type, a.id)
 	case Proxy:
 		return fmt.Sprintf("%s.%d", a.Type, a.id)
+	case Keepalive:
+		return Keepalive.String()
 	}
 	return ""
 }
@@ -83,4 +90,34 @@ func (a *LabelAddr) ProxyPort() uint16 {
 		return uint16(a.id)
 	}
 	return 0
+}
+
+func AddrFromLabel(back, front, label string) (*LabelAddr, *LabelAddr, error) {
+	laddr := new(LabelAddr)
+	raddr := new(LabelAddr)
+	addrs := strings.Split(label, ".")
+	t := ChannelType(addrs[0])
+
+	laddr.Name = back
+	laddr.Type = t
+	raddr.Name = front
+	raddr.Type = t
+
+	var id uint64
+	if len(addrs) >= 2 {
+		var err error
+		id, err = strconv.ParseUint(addrs[1], 10, 64)
+		if err != nil {
+			return nil, nil, stderr.Wrap(err)
+		}
+	}
+
+	switch t {
+	case Ssh, Keepalive:
+		return laddr, raddr, nil
+	case Web, File, Proxy:
+		laddr.id = id
+		raddr.id = id
+	}
+	return nil, nil, stderr.New("unknown label")
 }

@@ -2,12 +2,14 @@ package pnet
 
 import (
 	"net"
+
+	"github.com/yixinin/puup/connection"
 )
 
-var peerClient *PeersClient
+var peerClient *connection.PeersClient
 
 func init() {
-	peerClient = NewPeersClient()
+	peerClient = connection.NewPeersClient()
 }
 
 func Dial(serverAddr, backendName string) (net.Conn, error) {

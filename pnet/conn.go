@@ -4,18 +4,18 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/connection"
 )
 
 type Conn struct {
 	sync.RWMutex
-	*DataChannel
+	*connection.DataChannel
 
 	isClose bool
 
@@ -30,7 +30,7 @@ type Conn struct {
 	sendPool chan []byte
 }
 
-func NewConn(dc *DataChannel, release chan string) *Conn {
+func NewConn(dc *connection.DataChannel, release chan string) *Conn {
 	sess := &Conn{
 		DataChannel: dc,
 		release:     release,
@@ -39,15 +39,9 @@ func NewConn(dc *DataChannel, release chan string) *Conn {
 		buffer:      bufio.NewReader(dc),
 		sendPool:    make(chan []byte),
 	}
-	dc.setStatus(Active)
+	dc.SetStatus(connection.Active)
 	go sess.loop()
 	return sess
-}
-
-func (c *Conn) IsEOF() bool {
-	c.RLock()
-	defer c.RUnlock()
-	return c.ended
 }
 
 func (s *Conn) IsClose() bool {
@@ -113,10 +107,6 @@ func (c *Conn) Read(data []byte) (n int, err error) {
 		return c.buffer.Read(data)
 	}
 
-	if c.IsEOF() {
-		return 0, io.EOF
-	}
-
 	select {
 	case <-c.close:
 		return 0, net.ErrClosed
@@ -160,7 +150,7 @@ func (c *Conn) Release() {
 		return
 	}
 	c.isRelease = true
-	c.release <- c.dc.Label()
+	c.release <- c.Label()
 }
 
 func (c *Conn) Close() error {
@@ -173,6 +163,6 @@ func (c *Conn) Close() error {
 	c.isClose = true
 	close(c.close)
 
-	c.setStatus(Idle)
+	c.SetStatus(connection.Idle)
 	return nil
 }

@@ -1,4 +1,4 @@
-package pnet
+package connection
 
 import (
 	"context"
@@ -46,8 +46,8 @@ type DataChannelCommand struct {
 type Peer struct {
 	sync.Mutex
 
-	Type     PeerType
-	sigCient *SignalingClient
+	Type   PeerType
+	sigcli Signalinger
 
 	dataEvent chan string
 
@@ -59,29 +59,29 @@ type Peer struct {
 
 	connected chan struct{}
 
-	actives map[string]*Conn
+	actives map[string]*DataChannel
 	idles   map[string]*DataChannel
 
 	close   chan struct{}
 	isClose bool
 
-	dcSize uint32
+	idx uint32
 }
 
-func NewOfferPeer(pc *webrtc.PeerConnection, sigClient *SignalingClient) (*Peer, error) {
+func NewOfferPeer(pc *webrtc.PeerConnection, sigClient Signalinger) (*Peer, error) {
 	p := newPeer(pc, Offer)
 	dc, err := pc.CreateDataChannel("keepalive", nil)
 	if err != nil {
 		return nil, err
 	}
 	go p.keepalive(context.Background(), dc)
-	p.sigCient = sigClient
+	p.sigcli = sigClient
 	go p.loopDataEvent(nil)
 	return p, nil
 }
-func NewAnswerPeer(pc *webrtc.PeerConnection, sigClient *SignalingClient, onConn chan net.Conn) *Peer {
+func NewAnswerPeer(pc *webrtc.PeerConnection, sigClient Signalinger, onConn chan net.Conn) *Peer {
 	p := newPeer(pc, Answer)
-	p.sigCient = sigClient
+	p.sigcli = sigClient
 	go p.loopDataEvent(onConn)
 	return p
 }
@@ -93,7 +93,7 @@ func newPeer(pc *webrtc.PeerConnection, pt PeerType) *Peer {
 		connReleaseEvent: make(chan string),
 		cmdChan:          make(chan DataChannelCommand, 1),
 
-		actives:   make(map[string]*Conn),
+		actives:   make(map[string]*DataChannel),
 		idles:     make(map[string]*DataChannel),
 		connected: make(chan struct{}, 1),
 		close:     make(chan struct{}),
@@ -125,6 +125,8 @@ func (p *Peer) keepalive(ctx context.Context, dc *webrtc.DataChannel) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-p.close:
+			return
 		case <-tk.C:
 			logrus.Debugf("send keepalive to %s", dc.Label())
 			err := dc.Send([]byte{':', ':'})
@@ -148,7 +150,7 @@ func (p *Peer) loop() {
 				v, ok := p.actives[label]
 				if ok {
 					delete(p.actives, label)
-					p.idles[label] = v.DataChannel
+					p.idles[label] = v
 				}
 			}()
 		case cmd := <-p.cmdChan:
@@ -187,15 +189,24 @@ func (p *Peer) Connect() error {
 		}
 		p.Lock()
 		defer p.Unlock()
-
-		d := NewDataChannel(dc, p.dataEvent)
+		laddr, raddr, err := AddrFromLabel(backendName, frontendName, dc.Label())
+		if err != nil {
+			logrus.Errorf("parse label error:%v", err)
+			return
+		}
+		switch raddr.Type {
+		case Keepalive:
+			go p.keepalive(context.Background(), dc)
+			return
+		}
+		d := NewDataChannel(dc, laddr, raddr, p.dataEvent)
 		p.idles[dc.Label()] = d
 	})
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
 			return
 		}
-		err := p.sigCient.PostCandidate(ctx, c)
+		err := p.sigcli.SendCandidate(ctx, c)
 		if err != nil {
 			logrus.Errorf("send candidate error:%v", err)
 		}
@@ -234,7 +245,7 @@ func (p *Peer) loopDataEvent(onConn chan net.Conn) {
 			p.Lock()
 			conn, ok := p.actives[key]
 			if ok {
-				conn.dataEvent <- struct{}{}
+				conn.dataEvent <- key
 			}
 			p.Unlock()
 			if onConn != nil {
@@ -248,18 +259,17 @@ func (p *Peer) loopDataEvent(onConn chan net.Conn) {
 	}
 }
 
-func (p *Peer) CreateConn(label string) (*Conn, error) {
+func (p *Peer) CreateConn(label string, laddr, raddr net.Addr) (*DataChannel, error) {
 	// create new channel
 	wdc, err := p.pc.CreateDataChannel(label, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	dc := NewDataChannel(wdc, p.dataEvent)
-	conn := NewConn(dc, p.connReleaseEvent)
+	dc := NewDataChannel(wdc, laddr, raddr, p.dataEvent)
 	p.Lock()
 	defer p.Unlock()
-	p.actives[dc.dc.Label()] = conn
+	p.actives[dc.dc.Label()] = dc
 	return conn, nil
 }
 
@@ -268,9 +278,11 @@ func (p *Peer) GetWebConn(label string) (*Conn, error) {
 	if conn := p.getIdleDataChannel(label); conn != nil {
 		return conn, nil
 	}
-	atomic.AddUint32(&p.dcSize, 1)
-	label = fmt.Sprintf("web.%d", p.dcSize)
-	return p.CreateConn(label)
+	idx := atomic.AddUint32(&p.idx, 1)
+	label = fmt.Sprintf("web.%d", idx)
+	laddr := NewWebAddr(frontendName, uint64(idx))
+	raddr := NewWebAddr(backendName, uint64(idx))
+	return p.CreateConn(label, laddr, raddr)
 }
 func (p *Peer) GetProxyConn(port uint16) (*Conn, error) {
 	label := fmt.Sprintf("%s.%d", proto.Proxy, port)
@@ -289,7 +301,7 @@ func (p *Peer) GetSshConn() (*Conn, error) {
 	return p.CreateConn(label)
 }
 
-func (c *Peer) getIdleDataChannel(label string) *Conn {
+func (c *Peer) getIdleDataChannel(label string) *DataChannel {
 	c.Lock()
 	defer c.Unlock()
 	if len(c.idles) == 0 {
@@ -309,10 +321,8 @@ func (c *Peer) getIdleDataChannel(label string) *Conn {
 	}
 
 	if dc != nil {
-		conn := NewConn(dc, c.connReleaseEvent)
-		c.actives[label] = conn
-		delete(c.idles, label)
-		return conn
+		c.actives[label] = dc
+		return dc
 	}
 	return nil
 }

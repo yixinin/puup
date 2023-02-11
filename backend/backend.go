@@ -4,15 +4,16 @@ import (
 	"context"
 	"net"
 
-	"github.com/pion/webrtc/v3"
+	// This is required to use H264 video encoder
+	_ "github.com/pion/mediadevices/pkg/driver/camera" // This is required to register camera adapter
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/ice"
 	"github.com/yixinin/puup/pnet"
 )
 
 type Backend struct {
 	lis *pnet.Listener
 
+	rtc   *RtcServer
 	web   *WebServer
 	ssh   Server
 	file  Server
@@ -22,8 +23,6 @@ type Backend struct {
 	fileConn  chan net.Conn
 	webConn   chan net.Conn
 	proxyConn chan net.Conn
-
-	video *webrtc.PeerConnection
 
 	close chan struct{}
 }
@@ -46,13 +45,6 @@ func NewBackend(serverAddr, backendName string) (*Backend, error) {
 	b.web = NewWebServer(b)
 	b.file = NewFileServer()
 	b.ssh = NewSshServer()
-
-	pc, err := webrtc.NewPeerConnection(ice.Config)
-	if err != nil {
-		return nil, err
-	}
-
-	b.video = pc
 
 	return b, nil
 }
