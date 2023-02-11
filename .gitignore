@@ -1,0 +1,10 @@
+/ssh
+puup
+.vscode
+*.exe
+*.exe~
+*debug*
+deploy.ps1
+bin
+*debug*
+*.wasm

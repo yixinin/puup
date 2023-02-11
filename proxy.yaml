@@ -1,0 +1,7 @@
+type: offer
+server_addr: "http://114.115.218.1:8080"
+backend_name: "pi"
+proxy:
+  ports:
+    - local: 5900
+      remote: 5900

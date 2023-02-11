@@ -1,0 +1,8 @@
+[Unit]
+Description=webrtc back service
+
+[Service]
+ExecStart=/home/pi/app/pipuup
+Restart=always
+[Install]
+Target=multi-user.target
