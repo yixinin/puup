@@ -131,7 +131,7 @@ func main() {
 	if runSsh {
 		wg.Add(1)
 		go func() {
-			c := backend.NewSshClient("http://114.115.218.1:8080", backname)
+			c := backend.NewSshServer("http://114.115.218.1:8080", backname)
 			err := c.Run()
 			if err != nil {
 				logrus.Errorf("run ssh error:%v", err)

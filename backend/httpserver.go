@@ -11,12 +11,16 @@ import (
 )
 
 type WebServer struct {
+	lis net.Listener
 }
 
-func RunServer(ctx context.Context, name, puup, shareDir string) error {
-	ln := pnet.NewListener(name, puup)
-	defer ln.Close()
+func NewWebServer(lis net.Listener) *WebServer {
+	return &WebServer{
+		lis: lis,
+	}
+}
 
+func (s *WebServer) Run(ctx context.Context) error {
 	h := &http.Server{}
 	h.ConnState = func(c net.Conn, cs http.ConnState) {
 		switch cs {
@@ -44,13 +48,13 @@ func RunServer(ctx context.Context, name, puup, shareDir string) error {
 			"id":  req.Id,
 		})
 	})
-	e.StaticFS("/share", http.Dir(shareDir))
+	// e.StaticFS("/share", http.Dir(shareDir))
 	e.NoRoute(func(c *gin.Context) {
 		c.JSON(200, gin.H{"msg": "are you lost?"})
 	})
 	h.Handler = e
 
-	go h.Serve(ln)
+	go h.Serve(s.lis)
 
 	<-ctx.Done()
 	return ctx.Err()

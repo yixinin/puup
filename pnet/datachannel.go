@@ -32,8 +32,9 @@ type ReuseNetConn interface {
 type DataChannel struct {
 	sync.RWMutex
 
-	name  string
-	raddr net.Addr
+	Type        PeerType
+	backendName string
+	fontEndName string
 
 	dc    *webrtc.DataChannel
 	open  chan struct{}
@@ -47,10 +48,22 @@ type DataChannel struct {
 }
 
 func (c *DataChannel) LocalAddr() net.Addr {
-	return NewLabelAddr(c.name, c.dc.Label())
+	switch c.Type {
+	case Offer:
+		return NewLabelAddr(c.fontEndName, c.dc.Label())
+	case Answer:
+		return NewLabelAddr(c.backendName, c.dc.Label())
+	}
+	return nil
 }
 func (c *DataChannel) RemoteAddr() net.Addr {
-	return c.raddr
+	switch c.Type {
+	case Offer:
+		return NewLabelAddr(c.backendName, c.dc.Label())
+	case Answer:
+		return NewLabelAddr(c.fontEndName, c.dc.Label())
+	}
+	return nil
 }
 
 func (c *DataChannel) GetStatus() DcStatus {

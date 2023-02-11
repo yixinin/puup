@@ -6,13 +6,11 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/pnet"
 	"github.com/yixinin/puup/stderr"
 	"golang.org/x/crypto/ssh"
 )
 
 type SshServer struct {
-	lis *pnet.Listener
 }
 
 type SshHeader struct {
@@ -21,42 +19,29 @@ type SshHeader struct {
 	Key  []byte `json:"key,omitempty"`
 }
 
-func NewSshClient(puup, name string) *SshServer {
-	lis := pnet.NewListener(name, puup)
-	return &SshServer{
-		lis: lis,
-	}
+func NewSshServer() *SshServer {
+	return &SshServer{}
 }
 
-func (c *SshServer) Run() error {
-	return c.loop()
-}
-
-func (c *SshServer) loop() error {
-	for {
-		conn, err := c.lis.Accept()
-		if err != nil {
-			return stderr.Wrap(err)
-		}
-		var req SshHeader
-		var header = make([]byte, 1024)
-		n, err := conn.Read(header)
-		if err != nil {
-			return stderr.Wrap(err)
-		}
-		logrus.Debugf("login with:%s", header[:n])
-		err = json.Unmarshal(header[:n], &req)
-		if err != nil {
-			return stderr.Wrap(err)
-		}
-		go func() {
-			err = Connect(req, conn)
-			if err != nil {
-				logrus.Error("ssh connection failed:%v", err)
-			}
-			logrus.Debugf("ssh session end")
-		}()
+func (c *SshServer) Serve(conn net.Conn) error {
+	var req SshHeader
+	var header = make([]byte, 1024)
+	n, err := conn.Read(header)
+	if err != nil {
+		return stderr.Wrap(err)
 	}
+	logrus.Debugf("login with:%s", header[:n])
+	err = json.Unmarshal(header[:n], &req)
+	if err != nil {
+		return stderr.Wrap(err)
+	}
+
+	err = Connect(req, conn)
+	if err != nil {
+		logrus.Error("ssh connection failed:%v", err)
+	}
+	logrus.Debugf("ssh session end")
+	return nil
 }
 
 func Connect(req SshHeader, conn net.Conn) error {
