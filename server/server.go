@@ -27,17 +27,17 @@ type SdpPair struct {
 
 type Server struct {
 	sync.RWMutex
-	backends map[string]*Backend
+	backends map[string]*Session
 }
 
-func (s *Server) GetBackend(name string) (*Backend, bool) {
+func (s *Server) GetBackend(name string) (*Session, bool) {
 	s.RLock()
 	defer s.RUnlock()
 	b, ok := s.backends[name]
 	return b, ok
 }
 
-func (s *Server) MustGetBackend(name string) (*Backend, bool) {
+func (s *Server) MustGetBackend(name string) (*Session, bool) {
 	s.Lock()
 	defer s.Unlock()
 	b, ok := s.backends[name]
@@ -48,7 +48,7 @@ func (s *Server) MustGetBackend(name string) (*Backend, bool) {
 	return b, ok
 }
 
-func (s *Server) AddBackend(name string, b *Backend) {
+func (s *Server) AddBackend(name string, b *Session) {
 	s.Lock()
 	defer s.Unlock()
 	s.backends[name] = b
@@ -62,7 +62,7 @@ func (s *Server) DelBackend(name string) {
 
 func NewServer() *Server {
 	return &Server{
-		backends: make(map[string]*Backend),
+		backends: make(map[string]*Session),
 	}
 }
 
