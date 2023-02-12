@@ -46,26 +46,20 @@ type DataChannelCommand struct {
 type Peer struct {
 	sync.Mutex
 
-	Type   PeerType
-	sigcli Signalinger
+	Id          string
+	backendName string
+	Type        PeerType
+	idx         uint32
+	pc          *webrtc.PeerConnection
+	sigcli      Signalinger
 
-	dataEvent chan string
-
-	pc               *webrtc.PeerConnection
+	dataEvent        chan string
 	connReleaseEvent chan string
-
-	// cmd     *webrtc.DataChannel
-	cmdChan chan DataChannelCommand
-
-	connected chan struct{}
-
-	actives map[string]*DataChannel
-	idles   map[string]*DataChannel
-
-	close   chan struct{}
-	isClose bool
-
-	idx uint32
+	cmdChan          chan DataChannelCommand
+	connected        chan struct{}
+	actives          map[string]*DataChannel
+	idles            map[string]*DataChannel
+	close            chan struct{}
 }
 
 func NewOfferPeer(pc *webrtc.PeerConnection, sigClient Signalinger) (*Peer, error) {
@@ -79,7 +73,7 @@ func NewOfferPeer(pc *webrtc.PeerConnection, sigClient Signalinger) (*Peer, erro
 	go p.loopDataEvent(nil)
 	return p, nil
 }
-func NewAnswerPeer(pc *webrtc.PeerConnection, sigClient Signalinger, onConn chan net.Conn) *Peer {
+func NewAnswerPeer(pc *webrtc.PeerConnection, id string, sigClient Signalinger, onConn chan net.Conn) *Peer {
 	p := newPeer(pc, Answer)
 	p.sigcli = sigClient
 	go p.loopDataEvent(onConn)
@@ -189,7 +183,7 @@ func (p *Peer) Connect() error {
 		}
 		p.Lock()
 		defer p.Unlock()
-		laddr, raddr, err := AddrFromLabel(backendName, frontendName, dc.Label())
+		laddr, raddr, err := AddrFromLabel(p.backendName, p.Id, dc.Label())
 		if err != nil {
 			logrus.Errorf("parse label error:%v", err)
 			return
@@ -270,7 +264,7 @@ func (p *Peer) CreateConn(label string, laddr, raddr net.Addr) (*DataChannel, er
 	p.Lock()
 	defer p.Unlock()
 	p.actives[dc.dc.Label()] = dc
-	return conn, nil
+	return dc, nil
 }
 
 func (p *Peer) GetWebConn(label string) (*Conn, error) {
@@ -330,16 +324,20 @@ func (c *Peer) getIdleDataChannel(label string) *DataChannel {
 func (p *Peer) IsClose() bool {
 	p.Lock()
 	defer p.Unlock()
-	return p.isClose
+	select {
+	case <-p.close:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Peer) Close() error {
-	p.Lock()
-	defer p.Unlock()
-	if p.isClose {
+	if p.IsClose() {
 		return nil
 	}
-	p.isClose = true
+	p.Lock()
+	defer p.Unlock()
 	err := p.pc.Close()
 	close(p.close)
 	return err

@@ -2,80 +2,64 @@ package server
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/pion/webrtc/v3"
 	"github.com/yixinin/puup/proto"
 )
 
-func map2slice[K comparable, V any](m map[K]V) []V {
-	var s = make([]V, 0, len(m))
-	for _, v := range m {
-		s = append(s, v)
-	}
-	return s
-}
-
-func (s *Server) GetBackConnectionInfo(c *gin.Context) {
-	var req proto.GetConnectionInfoReq
+func (s *Server) Fetch(c *gin.Context) {
+	var req proto.FetchReq
 	c.BindQuery(&req)
-
-	var ack = new(proto.GetConnectionInfoAck)
-	defer c.JSON(200, ack)
-
-	b, ok := s.GetBackend(req.Name)
-	if !ok {
-		return
-	}
-
-	p, ok := b.Session(req.Key)
-	if !ok {
-		p = b.Connect(req.Key)
-	}
-
-	if p != nil {
-		ack.Candidates = map2slice(p.Front.Candidates)
-		ack.Sdp = p.Front.Sdp
-	}
-}
-
-func (s *Server) GetFrontConnectionInfo(c *gin.Context) {
-	var req proto.GetConnectionInfoReq
-	c.BindQuery(&req)
-	var ack = new(proto.GetConnectionInfoAck)
-	defer c.JSON(200, ack)
-
-	b, ok := s.GetBackend(req.Name)
-	if !ok {
-		return
-	}
-	v, ok := b.Session(req.Key)
-	if ok {
-		ack.Candidates = map2slice(v.Back.Candidates)
-		ack.Sdp = v.Back.Sdp
-	}
-}
-
-func (s *Server) Keepalive(c *gin.Context) {
-	var req proto.KeepAliveReq
-	c.BindQuery(&req)
-	var ack = new(proto.KeepaliveAck)
+	var ack = new(proto.FetchAck)
 
 	defer c.JSON(200, ack)
 
-	b, exist := s.MustGetBackend(req.Name)
-	if !exist {
+	b := s.GetBackend(req.Name)
+	var sess *Session
+	if req.Id != "" {
+		sess = b.GetSession(req.Id)
+	}
+
+	sess = b.RandSession()
+	if sess == nil {
 		return
 	}
-	b.KeepAlive()
-	b.Pendings(func(key string, p *SdpPair) {
-		ack.Keys = append(ack.Keys, key)
-	})
+	if sess.IsClose() {
+		return
+	}
+	fetchSession(req.Type, sess, ack)
+}
+
+func fetchSession(typ webrtc.SDPType, sess *Session, ack *proto.FetchAck) {
+	switch typ {
+	case webrtc.SDPTypeOffer:
+		for {
+			select {
+			case sdp := <-sess.answer:
+				ack.Sdp = sdp
+			case ice := <-sess.answerIce:
+				ack.Candidates = append(ack.Candidates, ice)
+			default:
+				return
+			}
+		}
+
+	case webrtc.SDPTypeAnswer:
+		for {
+			select {
+			case sdp := <-sess.offer:
+				ack.Sdp = sdp
+			case ice := <-sess.offerIce:
+				ack.Candidates = append(ack.Candidates, ice)
+			default:
+				return
+			}
+		}
+	}
 }
 
 func (s *Server) Offline(c *gin.Context) {
 	var req proto.OfflineReq
 	c.BindQuery(&req)
-	b, ok := s.GetBackend(req.Name)
-	if !ok {
-		return
-	}
-	b.Offline(req.Key)
+	b := s.GetBackend(req.Name)
+	b.DelSession(req.Id)
 }

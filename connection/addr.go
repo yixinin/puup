@@ -92,21 +92,21 @@ func (a *LabelAddr) ProxyPort() uint16 {
 	return 0
 }
 
-func AddrFromLabel(back, front, label string) (*LabelAddr, *LabelAddr, error) {
+func AddrFromLabel(backendName, id, label string) (*LabelAddr, *LabelAddr, error) {
 	laddr := new(LabelAddr)
 	raddr := new(LabelAddr)
 	addrs := strings.Split(label, ".")
 	t := ChannelType(addrs[0])
 
-	laddr.Name = back
+	laddr.Name = backendName
 	laddr.Type = t
-	raddr.Name = front
+	raddr.Name = id
 	raddr.Type = t
 
-	var id uint64
+	var idx uint64
 	if len(addrs) >= 2 {
 		var err error
-		id, err = strconv.ParseUint(addrs[1], 10, 64)
+		idx, err = strconv.ParseUint(addrs[1], 10, 64)
 		if err != nil {
 			return nil, nil, stderr.Wrap(err)
 		}
@@ -116,8 +116,8 @@ func AddrFromLabel(back, front, label string) (*LabelAddr, *LabelAddr, error) {
 	case Ssh, Keepalive:
 		return laddr, raddr, nil
 	case Web, File, Proxy:
-		laddr.id = id
-		raddr.id = id
+		laddr.id = idx
+		raddr.id = idx
 	}
 	return nil, nil, stderr.New("unknown label")
 }

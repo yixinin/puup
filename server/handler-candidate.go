@@ -1,60 +1,27 @@
 package server
 
 import (
-	"fmt"
-
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/pion/webrtc/v3"
 	"github.com/yixinin/puup/proto"
 )
 
-func (s *Server) PostFrontCandidate(c *gin.Context) {
+func (s *Server) PostCandidate(c *gin.Context) {
 	var req proto.PostCandidateReq
 	c.MustBindWith(&req, binding.JSON)
-	defer c.String(200, "")
-
-	b, _ := s.MustGetBackend(req.Name)
-	p, ok := b.Session(req.Key)
-	if !ok {
-		p, ok = b.Pending(req.Key)
-		if !ok {
-			p = &SdpPair{
-				Back:  NewClientInfo(),
-				Front: NewClientInfo(),
-			}
-			b.PreConnect(req.Key, p)
-		}
-	}
-
-	var cd = req.Candidate
-	var key = fmt.Sprintf("%d%d", cd.Protocol, cd.Port)
-
-	p.Front.Candidates[key] = cd
-}
-
-func (s *Server) PostBackCandidate(c *gin.Context) {
-	var req proto.PostCandidateReq
-	c.MustBindWith(&req, binding.JSON)
-
-	defer c.String(200, "")
-
-	b, ok := s.GetBackend(req.Name)
-	if !ok {
+	b := s.GetBackend(req.Name)
+	sess := b.GetSession(req.Id)
+	if !sess.IsClose() {
+		c.String(200, "connection closed")
 		return
 	}
-	p, ok := b.Session(req.Key)
-	if !ok {
-		p, ok = b.Pending(req.Key)
-		if !ok {
-			p = &SdpPair{
-				Back:  NewClientInfo(),
-				Front: NewClientInfo(),
-			}
-			b.PreConnect(req.Key, p)
-		}
-	}
+	defer c.String(200, "")
 
-	var cd = req.Candidate
-	var key = fmt.Sprintf("%d%d", cd.Protocol, cd.Port)
-	p.Back.Candidates[key] = cd
+	switch req.Type {
+	case webrtc.SDPTypeOffer:
+		sess.offerIce <- req.Candidate
+	case webrtc.SDPTypeAnswer:
+		sess.answerIce <- req.Candidate
+	}
 }

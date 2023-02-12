@@ -26,18 +26,11 @@ type SdpPair struct {
 }
 
 type Server struct {
-	sync.RWMutex
-	backends map[string]*Session
+	sync.Mutex
+	backends map[string]*Backend
 }
 
-func (s *Server) GetBackend(name string) (*Session, bool) {
-	s.RLock()
-	defer s.RUnlock()
-	b, ok := s.backends[name]
-	return b, ok
-}
-
-func (s *Server) MustGetBackend(name string) (*Session, bool) {
+func (s *Server) GetBackend(name string) *Backend {
 	s.Lock()
 	defer s.Unlock()
 	b, ok := s.backends[name]
@@ -45,14 +38,9 @@ func (s *Server) MustGetBackend(name string) (*Session, bool) {
 		b = NewBackend(name)
 		s.backends[name] = b
 	}
-	return b, ok
+	return b
 }
 
-func (s *Server) AddBackend(name string, b *Session) {
-	s.Lock()
-	defer s.Unlock()
-	s.backends[name] = b
-}
 func (s *Server) DelBackend(name string) {
 	s.Lock()
 	defer s.Unlock()
@@ -62,7 +50,7 @@ func (s *Server) DelBackend(name string) {
 
 func NewServer() *Server {
 	return &Server{
-		backends: make(map[string]*Session),
+		backends: make(map[string]*Backend),
 	}
 }
 
@@ -73,13 +61,9 @@ func (s *Server) Run(ctx context.Context) error {
 	g := e.Group("/api")
 	g.Use(middles.CommonLogInterceptor())
 
-	g.POST("/sdp/back", s.PostBackSdp)
-	g.POST("/sdp/front", s.PostFrontSdp)
-	g.POST("/candidate/front", s.PostFrontCandidate)
-	g.POST("/candidate/back", s.PostBackCandidate)
-	g.GET("/conninfo/back", s.GetBackConnectionInfo)
-	g.GET("/conninfo/front", s.GetFrontConnectionInfo)
-	g.GET("/keepalive/back", s.Keepalive)
+	g.POST("/sdp ", s.PostSdp)
+	g.POST("/candidate", s.PostCandidate)
+	g.GET("/fetch", s.Fetch)
 	g.HEAD("/offline", s.Offline)
 
 	return e.Run(":8080")
