@@ -1,0 +1,6 @@
+type: offer
+server_name: "pi"
+sig_addr: "http://114.115.218.1:8080"
+proxy:
+  - local: 5900
+    remote: 5900

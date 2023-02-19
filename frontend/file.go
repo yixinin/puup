@@ -2,35 +2,61 @@ package frontend
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net"
 	"os"
 
+	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/config"
 	pnet "github.com/yixinin/puup/net"
 )
 
-type ScpClient struct {
-	localFilename, remoteFilename string
-	serverName                    string
-	sigAddr                       string
-	mode                          string
+type CopyFile struct {
+	localName  string
+	remoteName string
+	mode       string
 }
 
-func NewScpClient(localFilename, remoteFilename string, name string) *ScpClient {
-	return &ScpClient{
-		localFilename:  localFilename,
-		remoteFilename: remoteFilename,
-		sigAddr:        name,
+type FileClient struct {
+	serverName string
+	sigAddr    string
+
+	ch chan CopyFile
+}
+
+func NewFileClient(cfg *config.Config) *FileClient {
+	return &FileClient{
+		serverName: cfg.ServerName,
+		sigAddr:    cfg.SigAddr,
+		ch:         make(chan CopyFile, 1),
 	}
 }
 
-func (c *ScpClient) Run() error {
+func (c *FileClient) Run(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case file, ok := <-c.ch:
+			if !ok {
+				return net.ErrClosed
+			}
+			err := c.handle(file)
+			if err != nil {
+				logrus.Errorf("scp file error:%v", err)
+			}
+		}
+	}
+}
+
+func (c *FileClient) handle(file CopyFile) error {
 	conn, err := pnet.DialFile(c.sigAddr, c.serverName)
 	if err != nil {
 		return err
 	}
 
-	switch c.mode {
+	switch file.mode {
 	case "pull":
 		for {
 			rd := bufio.NewReader(conn)
@@ -56,7 +82,7 @@ func (c *ScpClient) Run() error {
 			}
 		}
 	case "push":
-		f, err := os.Open(c.localFilename)
+		f, err := os.Open(file.localName)
 		if err != nil {
 			return err
 		}
@@ -66,7 +92,7 @@ func (c *ScpClient) Run() error {
 			return err
 		}
 		if !info.IsDir() {
-			return c.CopyFs(conn, f, c.remoteFilename)
+			return c.CopyFs(conn, f, file.remoteName)
 		}
 		fs, err := f.ReadDir(-1)
 		if err != nil {
@@ -81,7 +107,8 @@ func (c *ScpClient) Run() error {
 
 	return nil
 }
-func (c *ScpClient) CopyFile(conn net.Conn, src, dst string) error {
+
+func (c *FileClient) CopyFile(conn net.Conn, src, dst string) error {
 	f, err := os.Open(src)
 	if err != nil {
 		return err
@@ -93,7 +120,7 @@ func (c *ScpClient) CopyFile(conn net.Conn, src, dst string) error {
 	return err
 }
 
-func (c *ScpClient) CopyFs(conn net.Conn, src *os.File, dst string) error {
+func (c *FileClient) CopyFs(conn net.Conn, src *os.File, dst string) error {
 	conn.Write([]byte(dst))
 	conn.Write([]byte{'\n'})
 	_, err := io.Copy(conn, src)

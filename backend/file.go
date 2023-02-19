@@ -2,20 +2,24 @@ package backend
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 
-	"github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/config"
+	pnet "github.com/yixinin/puup/net"
 )
 
 type FileServer struct {
+	lis net.Listener
 }
 
-func NewFileServer() *FileServer {
-	return &FileServer{}
+func NewFileServer(cfg *config.Config) *FileServer {
+	lis := pnet.NewListener(cfg.ServerName, cfg.SigAddr)
+	return &FileServer{lis: lis}
 }
 
 type FileHeader struct {
@@ -24,12 +28,25 @@ type FileHeader struct {
 	Filename string `json:"filename"`
 }
 
-func (s *FileServer) Serve(conn net.Conn) error {
+func (s *FileServer) Run(ctx context.Context) error {
+	for {
+		conn, err := s.lis.Accept()
+		if err != nil {
+			return err
+		}
+		err = s.handle(conn)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (s *FileServer) handle(rconn net.Conn) error {
 	defer func() {
-		conn.(*net.Conn).Release()
+		rconn.(*pnet.Conn).Release()
 	}()
 	var header FileHeader
-	data, _, err := bufio.NewReader(conn).ReadLine()
+	data, _, err := bufio.NewReader(rconn).ReadLine()
 	if err != nil {
 		return err
 	}
@@ -44,7 +61,7 @@ func (s *FileServer) Serve(conn net.Conn) error {
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(conn, f)
+		_, err = io.Copy(rconn, f)
 		if err == io.EOF {
 			return nil
 		}
@@ -54,7 +71,7 @@ func (s *FileServer) Serve(conn net.Conn) error {
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(f, conn)
+		_, err = io.Copy(f, rconn)
 		if err == io.EOF {
 			return nil
 		}

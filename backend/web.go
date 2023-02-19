@@ -7,17 +7,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/config"
+	pnet "github.com/yixinin/puup/net"
 )
 
 type WebServer struct {
 	lis net.Listener
 }
 
-func NewWebServer(lis net.Listener) *WebServer {
-	return &WebServer{
-		lis: lis,
-	}
+func NewWebServer(cfg *config.Config) *WebServer {
+	lis := pnet.NewListener(cfg.ServerName, cfg.SigAddr)
+	return &WebServer{lis: lis}
 }
 
 func (s *WebServer) Run(ctx context.Context) error {
@@ -25,7 +25,7 @@ func (s *WebServer) Run(ctx context.Context) error {
 	h.ConnState = func(c net.Conn, cs http.ConnState) {
 		switch cs {
 		case http.StateClosed:
-			conn, ok := c.(*net.Conn)
+			conn, ok := c.(*pnet.Conn)
 			if !ok {
 				logrus.Error("conn is not *net.Conn")
 				return

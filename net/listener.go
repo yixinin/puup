@@ -26,9 +26,9 @@ type Listener struct {
 	close   chan struct{}
 }
 
-func NewListener(name, sigAddr string) *Listener {
+func NewListener(serverName, sigAddr string) *Listener {
 	lis := &Listener{
-		sigClient: conn.NewSignalingClient(conn.Answer, sigAddr, name),
+		sigClient: conn.NewSignalingClient(conn.Answer, sigAddr, serverName),
 
 		onClose: make(chan string, 1),
 		onConn:  make(chan *conn.Conn, 10),

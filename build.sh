@@ -1,3 +1,5 @@
+export GOOS=
+export GOARCH=
 go build -o puup ./cmd
 go build -o ssh ./cmd/ssh
 

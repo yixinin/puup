@@ -14,6 +14,7 @@ import (
 	"github.com/yixinin/puup/backend"
 	"github.com/yixinin/puup/browser"
 	"github.com/yixinin/puup/frontend"
+	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/server"
 )
 
@@ -22,7 +23,6 @@ var (
 	runBack    bool
 	runFront   bool
 	runBrowser bool
-	runSsh     bool
 )
 
 var (
@@ -70,7 +70,6 @@ func main() {
 	flag.BoolVar(&runBack, "b", false, "run back")
 	flag.BoolVar(&runFront, "f", false, "run front")
 	flag.BoolVar(&runBrowser, "br", false, "run browser")
-	flag.BoolVar(&runSsh, "ssh", false, "run ssh server")
 	flag.StringVar(&logfile, "log", "", "log to filename")
 	flag.BoolVar(&debugLevel, "debug", false, "log debug mode")
 	flag.StringVar(&backname, "name", "pi", "backend name")
@@ -106,36 +105,36 @@ func main() {
 			}
 		}()
 	}
+	var cfgFilename string = "puub.yaml"
 	if runBack {
 		wg.Add(1)
-		go func() {
+		var b, err = backend.NewBackend(cfgFilename)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		conn.GoFunc(ctx, func(ctx context.Context) error {
 			defer wg.Done()
-			backend.RunServer(ctx, backname, "http://114.115.218.1:8080", shareDir)
-		}()
-
+			return b.Run(ctx)
+		})
 	}
 	if runFront {
 		wg.Add(1)
-		go func() {
+		var f, err = frontend.NewFrontEnd(cfgFilename)
+		if err != nil {
+			logrus.Error(err)
+			return
+		}
+		conn.GoFunc(ctx, func(ctx context.Context) error {
 			defer wg.Done()
-			frontend.RunClient(ctx, backname, "http://114.115.218.1:8080")
-		}()
+			return f.Run(ctx)
+		})
 	}
 	if runBrowser {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			browser.RunBrowser()
-		}()
-	}
-	if runSsh {
-		wg.Add(1)
-		go func() {
-			c := backend.NewSshServer("http://114.115.218.1:8080", backname)
-			err := c.Run()
-			if err != nil {
-				logrus.Errorf("run ssh error:%v", err)
-			}
 		}()
 	}
 	var ch = make(chan os.Signal, 1)

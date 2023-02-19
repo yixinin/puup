@@ -1,16 +1,20 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/config"
+	pnet "github.com/yixinin/puup/net"
 	"github.com/yixinin/puup/stderr"
 	"golang.org/x/crypto/ssh"
 )
 
 type SshServer struct {
+	lis net.Listener
 }
 
 type SshHeader struct {
@@ -19,11 +23,29 @@ type SshHeader struct {
 	Key  []byte `json:"key,omitempty"`
 }
 
-func NewSshServer() *SshServer {
-	return &SshServer{}
+func NewSshServer(cfg *config.Config) *SshServer {
+	return &SshServer{
+		lis: pnet.NewListener(cfg.ServerName, cfg.SigAddr),
+	}
 }
 
-func (c *SshServer) Serve(conn net.Conn) error {
+func (c *SshServer) Run(ctx context.Context) error {
+	for {
+		conn, err := c.lis.Accept()
+		if err != nil {
+			return err
+		}
+		err = c.handle(conn)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (c *SshServer) handle(conn net.Conn) error {
+	defer func() {
+		conn.(*pnet.Conn).Release()
+	}()
 	var req SshHeader
 	var header = make([]byte, 1024)
 	n, err := conn.Read(header)
@@ -36,7 +58,7 @@ func (c *SshServer) Serve(conn net.Conn) error {
 		return stderr.Wrap(err)
 	}
 
-	err = Connect(req, conn)
+	err = ConnectSsh(req, conn)
 	if err != nil {
 		logrus.Error("ssh connection failed:%v", err)
 	}
@@ -44,7 +66,7 @@ func (c *SshServer) Serve(conn net.Conn) error {
 	return nil
 }
 
-func Connect(req SshHeader, conn net.Conn) error {
+func ConnectSsh(req SshHeader, conn net.Conn) error {
 	cfg := &ssh.ClientConfig{
 		Timeout:         time.Second, //ssh 连接time out 时间一秒钟, 如果ssh验证错误 会在一秒内返回
 		User:            req.User,
