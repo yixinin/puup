@@ -31,7 +31,8 @@ var (
 )
 
 var shareDir string
-var backname string
+var serverName string
+var cfgFilename string
 
 type funcremove struct {
 }
@@ -69,10 +70,11 @@ func main() {
 	flag.BoolVar(&runServer, "s", false, "run server")
 	flag.BoolVar(&runBack, "b", false, "run back")
 	flag.BoolVar(&runFront, "f", false, "run front")
+	flag.StringVar(&cfgFilename, "c", "puup.yaml", "config file name")
 	flag.BoolVar(&runBrowser, "br", false, "run browser")
 	flag.StringVar(&logfile, "log", "", "log to filename")
 	flag.BoolVar(&debugLevel, "debug", false, "log debug mode")
-	flag.StringVar(&backname, "name", "pi", "backend name")
+	flag.StringVar(&serverName, "name", "pi", "backend name")
 	flag.StringVar(&shareDir, "share", ".", "fileserver dir")
 	flag.Parse()
 	Init()
@@ -105,7 +107,6 @@ func main() {
 			}
 		}()
 	}
-	var cfgFilename string = "puub.yaml"
 	if runBack {
 		wg.Add(1)
 		var b, err = backend.NewBackend(cfgFilename)
