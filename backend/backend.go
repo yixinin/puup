@@ -7,11 +7,11 @@ import (
 	// This is required to use H264 video encoder
 	_ "github.com/pion/mediadevices/pkg/driver/camera" // This is required to register camera adapter
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/pnet"
+	"github.com/yixinin/puup/net"
 )
 
 type Backend struct {
-	lis *pnet.Listener
+	lis *net.Listener
 
 	rtc   *RtcServer
 	web   *WebServer
@@ -27,9 +27,9 @@ type Backend struct {
 	close chan struct{}
 }
 
-func NewBackend(serverAddr, backendName string) (*Backend, error) {
+func NewBackend(sigAddr, sigAddr string) (*Backend, error) {
 	b := &Backend{
-		lis:       pnet.NewListener(backendName, serverAddr),
+		lis:       net.NewListener(sigAddr, sigAddr),
 		sshConn:   make(chan net.Conn, 1),
 		fileConn:  make(chan net.Conn, 1),
 		proxyConn: make(chan net.Conn, 1),
@@ -62,15 +62,15 @@ func (b *Backend) Listen() error {
 		if err != nil {
 			return err
 		}
-		addr := conn.RemoteAddr().(*pnet.LabelAddr)
+		addr := conn.RemoteAddr().(*net.LabelAddr)
 		switch addr.Type {
-		case pnet.Ssh:
+		case net.Ssh:
 			b.sshConn <- conn
-		case pnet.File:
+		case net.File:
 			b.fileConn <- conn
-		case pnet.Web:
+		case net.Web:
 			b.webConn <- conn
-		case pnet.Proxy:
+		case net.Proxy:
 			b.proxyConn <- conn
 		default:
 			logrus.Errorln("unkown conn")

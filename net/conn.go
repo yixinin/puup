@@ -1,4 +1,4 @@
-package pnet
+package net
 
 import (
 	"bufio"
@@ -10,14 +10,12 @@ import (
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/connection"
+	"github.com/yixinin/puup/net/conn"
 )
 
 type Conn struct {
 	sync.RWMutex
-	*connection.DataChannel
-
-	isClose bool
+	*conn.Conn
 
 	isRelease bool
 	release   chan string
@@ -30,25 +28,30 @@ type Conn struct {
 	sendPool chan []byte
 }
 
-func NewConn(dc *connection.DataChannel, release chan string) *Conn {
-	sess := &Conn{
-		DataChannel: dc,
-		release:     release,
-		close:       make(chan struct{}),
-		dataEvent:   make(chan struct{}, 1),
-		buffer:      bufio.NewReader(dc),
-		sendPool:    make(chan []byte),
+func NewConn(cc *conn.Conn, release chan string) *Conn {
+	c := &Conn{
+		Conn:      cc,
+		release:   release,
+		close:     make(chan struct{}),
+		dataEvent: make(chan struct{}, 1),
+		buffer:    bufio.NewReader(cc),
+		sendPool:  make(chan []byte),
 	}
-	dc.SetStatus(connection.Active)
-	go sess.loop()
-	return sess
+	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
+		return c.loopSend(ctx)
+	})
+	return c
 }
 
 func (s *Conn) IsClose() bool {
 	s.RLock()
 	defer s.RUnlock()
 
-	return s.isClose
+	select {
+	case <-s.close:
+		return true
+	}
+	return false
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {
@@ -125,19 +128,22 @@ func (c *Conn) Write(data []byte) (int, error) {
 		return len(data), nil
 	}
 }
-func (c *Conn) loop() {
+func (c *Conn) loopSend(ctx context.Context) error {
+	defer c.Close()
 	for {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-c.close:
-			return
+			return nil
 		case data := <-c.sendPool:
-			_, err := c.DataChannel.Write(data)
+			_, err := c.Conn.Write(data)
 			if err != nil {
 				logrus.Errorf("send channel data failed, session will be closed! error:%v", err)
-				c.Close()
+				return err
 			}
 			if errors.Is(err, webrtc.ErrConnectionClosed) {
-				return
+				return net.ErrClosed
 			}
 		}
 	}
@@ -155,14 +161,12 @@ func (c *Conn) Release() {
 
 func (c *Conn) Close() error {
 	c.Release()
-	c.Lock()
-	defer c.Unlock()
-	if c.isClose {
+	if c.IsClose() {
 		return nil
 	}
-	c.isClose = true
+	c.Lock()
+	defer c.Unlock()
 	close(c.close)
 
-	c.SetStatus(connection.Idle)
 	return nil
 }

@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/yixinin/puup/pnet"
+	"github.com/yixinin/puup/net"
 )
 
 type FileServer struct {
@@ -26,7 +26,7 @@ type FileHeader struct {
 
 func (s *FileServer) Serve(conn net.Conn) error {
 	defer func() {
-		conn.(*pnet.Conn).Release()
+		conn.(*net.Conn).Release()
 	}()
 	var header FileHeader
 	data, _, err := bufio.NewReader(conn).ReadLine()

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/pnet"
+	"github.com/yixinin/puup/net"
 )
 
 /*
@@ -35,7 +35,7 @@ func main() {
 	js.Global().Set("base64", encodeWrapper())
 	js.Global().Set("GoHttp", GoHttp())
 	js.Global().Set("GoHttpAsync", GoHttpAsync())
-	tp, err := pnet.NewTransport("http://114.115.218.1:8080", "pi")
+	tp, err := net.NewTransport("http://114.115.218.1:8080", "pi")
 	if err != nil {
 		fmt.Printf("init webrtc wasm error:%v\n", err)
 		return

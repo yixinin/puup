@@ -1,51 +1,17 @@
-package frontend
+package proxy
 
 import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"sync"
 
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/pnet"
+	pnet "github.com/yixinin/puup/net"
 	"github.com/yixinin/puup/stderr"
-	"gopkg.in/yaml.v3"
 )
 
-type Port struct {
-	Local  uint16 `yaml:"local"`
-	Remote uint16 `yaml:"remote,omitempty"`
-}
-type Config struct {
-	Ports []Port `yaml:"ports"`
-}
-type Proxy struct {
-	Type  pnet.PeerType
-	ports map[uint16]uint16
-}
-
-func NewProxy(filename string, pt pnet.PeerType) (*Proxy, error) {
-	var c = new(Config)
-	var data, err = os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	err = yaml.Unmarshal(data, c)
-	if err != nil {
-		return nil, err
-	}
-	var ports = make(map[uint16]uint16)
-	for _, v := range c.Ports {
-		ports[v.Local] = v.Remote
-	}
-	return &Proxy{
-		Type:  pt,
-		ports: ports,
-	}, nil
-}
-
-func (p *Proxy) runBackwords() {
+func (p *Proxy) runForwards() error {
 	var wg sync.WaitGroup
 	for local, remote := range p.ports {
 		wg.Add(1)
@@ -57,10 +23,11 @@ func (p *Proxy) runBackwords() {
 		}(local, remote)
 	}
 	wg.Wait()
+	return nil
 }
 func (p *Proxy) runForward(localPort, remotePort uint16) error {
 	cli := pnet.NewPeersClient()
-	err := cli.Connect(p.cfg.ServerAddr, p.cfg.BackendName)
+	err := cli.Connect(p.sigAddr, p.serverName)
 	if err != nil {
 		return stderr.Wrap(err)
 	}
@@ -73,7 +40,7 @@ func (p *Proxy) runForward(localPort, remotePort uint16) error {
 		if err != nil {
 			return stderr.Wrap(err)
 		}
-		rconn, err := cli.DialProxy(p.cfg.ServerAddr, p.cfg.BackendName, remotePort)
+		rconn, err := cli.DialProxy(p.sigAddr, p.serverName, remotePort)
 		if err != nil {
 			return stderr.Wrap(err)
 		}

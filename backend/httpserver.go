@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/pnet"
+	"github.com/yixinin/puup/net"
 )
 
 type WebServer struct {
@@ -25,9 +25,9 @@ func (s *WebServer) Run(ctx context.Context) error {
 	h.ConnState = func(c net.Conn, cs http.ConnState) {
 		switch cs {
 		case http.StateClosed:
-			conn, ok := c.(*pnet.Conn)
+			conn, ok := c.(*net.Conn)
 			if !ok {
-				logrus.Error("conn is not *pnet.Conn")
+				logrus.Error("conn is not *net.Conn")
 				return
 			}
 			conn.Release()

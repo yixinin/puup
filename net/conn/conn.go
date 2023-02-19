@@ -1,4 +1,4 @@
-package connection
+package conn
 
 import (
 	"net"
@@ -17,34 +17,31 @@ const (
 	Closed  DcStatus = "closed"
 )
 
-type DataChannel struct {
+type Conn struct {
 	sync.RWMutex
 
-	peerType PeerType
+	sigAddr  string
+	clientId string
+	status   DcStatus
 
-	backendName string
-	fontendName string
-
-	dc    *webrtc.DataChannel
 	open  chan struct{}
 	close chan error
 
+	dc        *webrtc.DataChannel
 	recvChan  chan []byte
 	dataEvent chan string
 
-	ended  bool
-	status DcStatus
+	localAddr, remoteAddr *LabelAddr
 }
 
-func (c *DataChannel) Label() string {
+func (c *Conn) ClientId() string {
+	return c.clientId
+}
+func (c *Conn) Label() string {
 	return c.dc.Label()
 }
 
-func (c *DataChannel) GetStatus() DcStatus {
-	return c.status
-}
-
-func (c *DataChannel) SetStatus(status DcStatus) bool {
+func (c *Conn) SetStatus(status DcStatus) bool {
 	c.Lock()
 	defer c.Unlock()
 	if status == c.status {
@@ -54,20 +51,15 @@ func (c *DataChannel) SetStatus(status DcStatus) bool {
 	return true
 }
 
-func (c *DataChannel) IsClose() bool {
+func (c *Conn) IsClose() bool {
 	c.RLock()
 	defer c.RUnlock()
 
 	return c.status == Closed
 }
-func (c *DataChannel) IsEnd() bool {
-	c.RLock()
-	defer c.RUnlock()
-	return c.IsClose() || c.ended
-}
 
-func NewDataChannel(dc *webrtc.DataChannel, laddr, raddr net.Addr, dataEvent chan string) *DataChannel {
-	dcConn := &DataChannel{
+func NewConn(dc *webrtc.DataChannel, dataEvent chan string) *Conn {
+	dcConn := &Conn{
 		dc:        dc,
 		open:      make(chan struct{}, 1),
 		close:     make(chan error, 1),
@@ -77,7 +69,9 @@ func NewDataChannel(dc *webrtc.DataChannel, laddr, raddr net.Addr, dataEvent cha
 	}
 	dc.OnOpen(func() {
 		logrus.Infof("channel %s opened", dc.Label())
-		if dcConn.SetStatus(Idle) {
+		select {
+		case <-dcConn.open:
+		default:
 			close(dcConn.open)
 		}
 	})
@@ -90,32 +84,52 @@ func NewDataChannel(dc *webrtc.DataChannel, laddr, raddr net.Addr, dataEvent cha
 	return dcConn
 }
 
-func (c *DataChannel) LocalAddr() net.Addr {
-	switch c.peerType {
-	case Offer:
-		switch c.chanType {
-		case Ssh:
-			return NewSshAddr(c.fontendName)
-		case File:
-			return NewFileAddr(c.fontendName, idx)
-		}
-		return NewLabelAddr(c.fontendName, c.dc.Label())
-	case Answer:
-		return NewLabelAddr(c.backendName, c.dc.Label())
-	}
-	return nil
-}
-func (c *DataChannel) RemoteAddr() net.Addr {
-	switch c.peerType {
-	case Offer:
-		return NewLabelAddr(c.backendName, c.dc.Label())
-	case Answer:
-		return NewLabelAddr(c.fontendName, c.dc.Label())
+func (c *Conn) getLocalAddr() net.Addr {
+	c.RLock()
+	defer c.RUnlock()
+	if c.localAddr != nil {
+		return c.localAddr
 	}
 	return nil
 }
 
-func (c *DataChannel) Read(data []byte) (n int, err error) {
+func (c *Conn) getRemoteAddr() net.Addr {
+	c.RLock()
+	defer c.RUnlock()
+	if c.remoteAddr != nil {
+		return c.remoteAddr
+	}
+	return nil
+}
+
+func (c *Conn) LocalAddr() net.Addr {
+	if addr := c.getLocalAddr(); addr != nil {
+		return addr
+	}
+	c.Lock()
+	defer c.Unlock()
+	var err error
+	c.localAddr, c.remoteAddr, err = AddrFromLabel(c.sigAddr, c.clientId, c.Label())
+	if err != nil {
+		logrus.Errorf("parse addr error")
+	}
+	return c.localAddr
+}
+func (c *Conn) RemoteAddr() net.Addr {
+	if addr := c.getRemoteAddr(); addr != nil {
+		return addr
+	}
+	c.Lock()
+	defer c.Unlock()
+	var err error
+	c.localAddr, c.remoteAddr, err = AddrFromLabel(c.sigAddr, c.clientId, c.Label())
+	if err != nil {
+		logrus.Errorf("parse addr error")
+	}
+	return c.remoteAddr
+}
+
+func (c *Conn) Read(data []byte) (n int, err error) {
 	select {
 	case <-c.open:
 	case <-c.close:
@@ -131,7 +145,7 @@ func (c *DataChannel) Read(data []byte) (n int, err error) {
 	return n, nil
 }
 
-func (c *DataChannel) Write(data []byte) (int, error) {
+func (c *Conn) Write(data []byte) (int, error) {
 	select {
 	case <-c.close:
 		return 0, net.ErrClosed
@@ -142,7 +156,7 @@ func (c *DataChannel) Write(data []byte) (int, error) {
 	return len(data), err
 }
 
-func (c *DataChannel) OnMessage(msg webrtc.DataChannelMessage) {
+func (c *Conn) OnMessage(msg webrtc.DataChannelMessage) {
 	select {
 	case <-c.close:
 		logrus.Debugf("closed dc recieve %d msg, size: %d", c.dc.ID(), len(msg.Data))

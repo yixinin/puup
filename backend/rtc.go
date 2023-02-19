@@ -7,19 +7,19 @@ import (
 	"github.com/pion/mediadevices/pkg/codec/x264"
 	"github.com/pion/webrtc/v3"
 	"github.com/yixinin/puup/ice"
-	"github.com/yixinin/puup/pnet"
+	"github.com/yixinin/puup/net"
 )
 
 type RtcServer struct {
-	serverAddr, backendName string
-	Screen                  *webrtc.PeerConnection
-	Camera                  *webrtc.PeerConnection
+	sigAddr, sigAddr string
+	Screen           *webrtc.PeerConnection
+	Camera           *webrtc.PeerConnection
 }
 
-func NewRtcServer(serverAddr, backendName string) *RtcServer {
+func NewRtcServer(sigAddr, sigAddr string) *RtcServer {
 	return &RtcServer{
-		serverAddr:  serverAddr,
-		backendName: backendName,
+		sigAddr: sigAddr,
+		sigAddr: sigAddr,
 	}
 }
 func (s *RtcServer) loop() {
@@ -27,12 +27,12 @@ func (s *RtcServer) loop() {
 }
 
 func (s *RtcServer) RunCamera() error {
-	var backendName = fmt.Sprintf("%s.camera", s.backendName)
+	var sigAddr = fmt.Sprintf("%s.camera", s.sigAddr)
 	pc, err := webrtc.NewPeerConnection(ice.Config)
 	if err != nil {
 		return err
 	}
-	sigCli := pnet.NewAnswerClient(s.serverAddr, backendName)
+	sigCli := net.NewAnswerClient(s.sigAddr, sigAddr)
 	stream, err := mediadevices.GetDisplayMedia(mediadevices.MediaStreamConstraints{
 		Video: func(mtc *mediadevices.MediaTrackConstraints) {
 
@@ -46,7 +46,7 @@ func (s *RtcServer) RunCamera() error {
 		pc.AddTrack(v)
 	}
 
-	peer := pnet.NewAnswerPeer(pc, sigCli, nil)
+	peer := net.NewAnswerPeer(pc, sigCli, nil)
 	if err := peer.Connect(); err != nil {
 		return err
 	}
@@ -54,14 +54,14 @@ func (s *RtcServer) RunCamera() error {
 }
 
 func (s *RtcServer) RunScreen() error {
-	var backendName = fmt.Sprintf("%s.screen", s.backendName)
+	var sigAddr = fmt.Sprintf("%s.screen", s.sigAddr)
 	pc, err := webrtc.NewPeerConnection(ice.Config)
 	if err != nil {
 		return err
 	}
-	sigCli := pnet.NewAnswerClient(s.serverAddr, backendName)
+	sigCli := net.NewAnswerClient(s.sigAddr, sigAddr)
 
-	peer := pnet.NewAnswerPeer(pc, sigCli, nil)
+	peer := net.NewAnswerPeer(pc, sigCli, nil)
 	if err := peer.Connect(); err != nil {
 		return err
 	}

@@ -1,40 +1,39 @@
-package pnet
+package net
 
 import (
 	"context"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/connection"
 	"github.com/yixinin/puup/ice"
+	"github.com/yixinin/puup/net/conn"
+	"github.com/yixinin/puup/stderr"
 )
 
 type Listener struct {
 	sync.RWMutex
 
-	sigClient *connection.SignalingClient
+	sigClient *conn.SignalingClient
 
-	frontIn chan string
 	onClose chan string
-	onConn  chan net.Conn
+	onConn  chan *conn.Conn
 
-	peers map[string]*connection.Peer
+	peers map[string]*conn.Peer
 
 	isClose bool
 	close   chan struct{}
 }
 
-func NewListener(name, serverAddr string) *Listener {
+func NewListener(name, sigAddr string) *Listener {
 	lis := &Listener{
-		sigClient: connection.NewAnswerClient(serverAddr, name),
-		frontIn:   make(chan string, 10),
-		onClose:   make(chan string, 1),
-		onConn:    make(chan net.Conn, 10),
-		peers:     make(map[string]*connection.Peer, 1),
-		close:     make(chan struct{}, 1),
+		sigClient: conn.NewSignalingClient(conn.Answer, sigAddr, name),
+
+		onClose: make(chan string, 1),
+		onConn:  make(chan *conn.Conn, 10),
+		peers:   make(map[string]*conn.Peer, 1),
+		close:   make(chan struct{}, 1),
 	}
 	go lis.loop()
 	return lis
@@ -45,19 +44,24 @@ func (l *Listener) Accept() (net.Conn, error) {
 		select {
 		case <-l.close:
 			return nil, net.ErrClosed
-		case conn := <-l.onConn:
+		case cc := <-l.onConn:
+			p, ok := l.peers[cc.ClientId()]
+			if !ok {
+				return nil, stderr.New("peer is invalid")
+			}
+			conn := NewConn(cc, p.ReleaseChan())
 			return conn, nil
 		}
 	}
 }
 
-func (l *Listener) AddPeer(key string, p *connection.Peer) {
+func (l *Listener) AddPeer(key string, p *conn.Peer) {
 	l.Lock()
 	defer l.Unlock()
 	l.peers[key] = p
 }
 
-func (l *Listener) GetPeer(key string) (*connection.Peer, bool) {
+func (l *Listener) GetPeer(key string) (*conn.Peer, bool) {
 	l.RLock()
 	defer l.RUnlock()
 	p, ok := l.peers[key]
@@ -93,39 +97,33 @@ func (l *Listener) Addr() net.Addr {
 }
 
 func (l *Listener) loop() {
-	var kt = time.NewTicker(5 * time.Second)
-	defer kt.Stop()
 FOR:
 	for {
 		select {
-		case <-kt.C:
-			go l.sigClient.Keepalive(context.Background(), l.frontIn)
 		case <-l.close:
 			return
-		case key := <-l.frontIn:
-			if _, ok := l.GetPeer(key); ok {
+		case clientId := <-l.sigClient.NewClient():
+			if _, ok := l.GetPeer(clientId); ok {
 				continue FOR
 			}
 			pc, err := webrtc.NewPeerConnection(ice.Config)
 			if err != nil {
-				logrus.Errorf("new peer connection failed:%v", err)
+				logrus.Errorf("new peer sig failed:%v", err)
 				continue
 			}
-			c := l.sigClient.Clone()
-			c.FrontendKey = key
-			p := connection.NewAnswerPeer(pc, c, l.onConn)
-			l.AddPeer(key, p)
+
+			p := conn.NewAnswerPeer(pc, clientId, l.sigClient, l.onConn)
+			l.AddPeer(clientId, p)
 			go func() {
-				if err := p.Connect(); err != nil {
+				if err := p.Connect(context.TODO()); err != nil {
 					logrus.Errorf("peer connect failed:%v", err)
-					l.DelPeer(key)
+					l.DelPeer(clientId)
 					return
 				}
 			}()
-
 		case key := <-l.onClose:
 			l.DelPeer(key)
-			l.sigClient.Offline(context.Background())
+			l.sigClient.Offline(context.Background(), key)
 		}
 	}
 }

@@ -33,9 +33,9 @@ type OfflineReq struct {
 	Id   string `form:"id"`
 }
 
-func GetOfflineURL(serverAddr, backendName, id string) string {
+func GetOfflineURL(serverAddr, serverName, id string) string {
 	var vals = url.Values{}
-	vals.Add("name", backendName)
+	vals.Add("name", serverName)
 	vals.Add("id", id)
 	return fmt.Sprintf("%s/offline?%s", serverAddr, vals.Encode())
 }
@@ -46,9 +46,9 @@ type FetchReq struct {
 	Id   string         `form:"id"`
 }
 
-func GetFetchURL(serverAddr, backendName, id string) string {
+func GetFetchURL(serverAddr, serverName, id string) string {
 	var vals = url.Values{}
-	vals.Add("name", backendName)
+	vals.Add("name", serverName)
 	vals.Add("id", id)
 	return fmt.Sprintf("%s/fetch?%s", serverAddr, vals.Encode())
 }

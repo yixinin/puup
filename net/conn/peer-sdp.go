@@ -1,4 +1,4 @@
-package connection
+package conn
 
 import (
 	"context"
@@ -17,7 +17,7 @@ func (p *Peer) SendOffer(ctx context.Context) error {
 		return stderr.Wrap(err)
 	}
 
-	if err := p.sigcli.SendSdp(ctx, offer); err != nil {
+	if err := p.sigCli.SendSdp(ctx, p.clientId, offer); err != nil {
 		return stderr.Wrap(err)
 	}
 	return nil
@@ -31,7 +31,7 @@ func (p *Peer) SendAnswer(ctx context.Context) error {
 	if err := p.pc.SetLocalDescription(answer); err != nil {
 		return stderr.Wrap(err)
 	}
-	if err := p.sigcli.SendSdp(ctx, answer); err != nil {
+	if err := p.sigCli.SendSdp(ctx, p.clientId, answer); err != nil {
 		return stderr.Wrap(err)
 	}
 	return nil
@@ -48,14 +48,14 @@ func (p *Peer) WaitAnswer(ctx context.Context) error {
 			return ctx.Err()
 		case <-p.connected:
 			return nil
-		case sdp := <-p.sigcli.RemoteSdp():
+		case sdp := <-p.sigCli.RemoteSdp(p.clientId):
 			if p.pc.ConnectionState() < webrtc.PeerConnectionStateConnected {
 				err := p.pc.SetRemoteDescription(sdp)
 				if err != nil {
 					return stderr.Wrap(err)
 				}
 			}
-		case ice := <-p.sigcli.RemoteIceCandidates():
+		case ice := <-p.sigCli.RemoteIceCandidates(p.clientId):
 			if p.pc.ICEConnectionState() < webrtc.ICEConnectionStateConnected {
 				err := p.pc.AddICECandidate(ice.ToJSON())
 				if err != nil {
@@ -74,7 +74,7 @@ func (p *Peer) PollOffer(ctx context.Context) error {
 			return ctx.Err()
 		case <-p.connected:
 			return nil
-		case sdp := <-p.sigcli.RemoteSdp():
+		case sdp := <-p.sigCli.RemoteSdp(p.clientId):
 			if p.pc.ConnectionState() < webrtc.PeerConnectionStateConnected {
 				err := p.pc.SetRemoteDescription(sdp)
 				if err != nil {
@@ -84,7 +84,7 @@ func (p *Peer) PollOffer(ctx context.Context) error {
 					return err
 				}
 			}
-		case ice := <-p.sigcli.RemoteIceCandidates():
+		case ice := <-p.sigCli.RemoteIceCandidates(p.clientId):
 			if p.pc.ICEConnectionState() < webrtc.ICEConnectionStateConnected {
 				err := p.pc.AddICECandidate(ice.ToJSON())
 				if err != nil {

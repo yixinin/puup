@@ -1,4 +1,4 @@
-package pnet
+package net
 
 import (
 	"bufio"
@@ -10,22 +10,22 @@ import (
 )
 
 type Transport struct {
-	client     *PeersClient
-	serverAddr string
-	backName   string
+	client   *PeersClient
+	sigAddr  string
+	backName string
 }
 
-func NewTransport(serverAddr, name string) (http.RoundTripper, error) {
+func NewTransport(sigAddr, name string) (http.RoundTripper, error) {
 	var wt = &Transport{
-		serverAddr: serverAddr,
-		backName:   name,
+		sigAddr:  sigAddr,
+		backName: name,
 	}
 	wt.client = NewPeersClient()
 	return wt, nil
 }
 
 func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
-	c, err := t.client.Dial(t.serverAddr, t.backName)
+	c, err := t.client.DialWeb(t.sigAddr, t.backName)
 	if err != nil {
 		return nil, err
 	}

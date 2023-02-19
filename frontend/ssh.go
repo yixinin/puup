@@ -11,16 +11,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/ice"
-	"github.com/yixinin/puup/pnet"
+	"github.com/yixinin/puup/net"
 	"github.com/yixinin/puup/stderr"
-	"golang.org/x/crypto/ssh/terminal"
-)
-
-const (
-	defaultpuup = "http://114.115.218.1:8080"
+	"golang.org/x/term"
 )
 
 type SshHeader struct {
@@ -30,6 +24,8 @@ type SshHeader struct {
 }
 
 type SshClient struct {
+	sigAddr    string
+	serverName string
 }
 
 func NewSshClient() *SshClient {
@@ -37,19 +33,7 @@ func NewSshClient() *SshClient {
 }
 
 func (c *SshClient) Run(user, name, pass string) error {
-	var pc, err = webrtc.NewPeerConnection(ice.Config)
-	if err != nil {
-		return err
-	}
-	sigCli := pnet.NewOfferClient(defaultpuup, name)
-	p, err := pnet.NewOfferPeer(pc, sigCli)
-	if err != nil {
-		return err
-	}
-	if err = p.Connect(); err != nil {
-		return err
-	}
-	conn, err := p.GetWebConn("")
+	conn, err := net.DialSsh(c.sigAddr, c.serverName)
 	if err != nil {
 		return err
 	}
@@ -111,12 +95,12 @@ func (c *SshClient) Run(user, name, pass string) error {
 		}
 	}()
 	fileDescriptor := int(os.Stdin.Fd())
-	if terminal.IsTerminal(fileDescriptor) {
-		originalState, err := terminal.MakeRaw(fileDescriptor)
+	if term.IsTerminal(fileDescriptor) {
+		originalState, err := term.MakeRaw(fileDescriptor)
 		if err != nil {
 			return stderr.Wrap(err)
 		}
-		defer terminal.Restore(fileDescriptor, originalState)
+		defer term.Restore(fileDescriptor, originalState)
 	}
 	wg.Wait()
 	return nil

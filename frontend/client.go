@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/pnet"
+	"github.com/yixinin/puup/net"
 )
 
 func RunClient(ctx context.Context, name, puup string) {
-	tp, err := pnet.NewTransport(puup, name)
+	tp, err := net.NewTransport(puup, name)
 	if err != nil {
 		logrus.Error(err)
 		return

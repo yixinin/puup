@@ -1,8 +1,7 @@
-package connection
+package conn
 
 import (
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 
@@ -33,14 +32,18 @@ type LabelAddr struct {
 	id   uint64
 }
 
-func NewWebAddr(name string, idx uint64) net.Addr {
+func NewLocalAddr(label string) {
+
+}
+
+func NewWebAddr(name string, idx uint64) *LabelAddr {
 	return &LabelAddr{
 		Name: name,
 		Type: Web,
 		id:   idx,
 	}
 }
-func NewFileAddr(name string, idx uint64) net.Addr {
+func NewFileAddr(name string, idx uint64) *LabelAddr {
 	return &LabelAddr{
 		Name: name,
 		Type: File,
@@ -48,14 +51,14 @@ func NewFileAddr(name string, idx uint64) net.Addr {
 	}
 }
 
-func NewSshAddr(name string) net.Addr {
+func NewSshAddr(name string) *LabelAddr {
 	return &LabelAddr{
 		Name: name,
 		Type: Ssh,
 	}
 }
 
-func NewProxyAddr(name string, port uint16) net.Addr {
+func NewProxyAddr(name string, port uint16) *LabelAddr {
 	return &LabelAddr{
 		Name: name,
 		Type: Web,
@@ -68,7 +71,7 @@ func (a *LabelAddr) Network() string {
 }
 
 func (a *LabelAddr) String() string {
-	return fmt.Sprintf("%s:%s", a.Name, a.Label)
+	return fmt.Sprintf("%s:%s", a.Name, a.Label())
 }
 
 func (a *LabelAddr) Label() string {
@@ -76,9 +79,9 @@ func (a *LabelAddr) Label() string {
 	case Ssh:
 		return Ssh.String()
 	case Web, File:
-		return fmt.Sprintf("%s.%d", a.Type, a.id)
+		return fmt.Sprintf("%sx%d", a.Type, a.id)
 	case Proxy:
-		return fmt.Sprintf("%s.%d", a.Type, a.id)
+		return fmt.Sprintf("%sx%d", a.Type, a.id)
 	case Keepalive:
 		return Keepalive.String()
 	}
@@ -92,16 +95,16 @@ func (a *LabelAddr) ProxyPort() uint16 {
 	return 0
 }
 
-func AddrFromLabel(backendName, id, label string) (*LabelAddr, *LabelAddr, error) {
+func AddrFromLabel(sigAddr, clientId, label string) (*LabelAddr, *LabelAddr, error) {
 	laddr := new(LabelAddr)
 	raddr := new(LabelAddr)
-	addrs := strings.Split(label, ".")
-	t := ChannelType(addrs[0])
+	addrs := strings.Split(label, "x")
+	ctype := ChannelType(addrs[0])
 
-	laddr.Name = backendName
-	laddr.Type = t
-	raddr.Name = id
-	raddr.Type = t
+	laddr.Name = sigAddr
+	laddr.Type = ctype
+	raddr.Name = clientId
+	raddr.Type = ctype
 
 	var idx uint64
 	if len(addrs) >= 2 {
@@ -112,7 +115,7 @@ func AddrFromLabel(backendName, id, label string) (*LabelAddr, *LabelAddr, error
 		}
 	}
 
-	switch t {
+	switch ctype {
 	case Ssh, Keepalive:
 		return laddr, raddr, nil
 	case Web, File, Proxy:

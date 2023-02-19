@@ -6,38 +6,26 @@ import (
 	"net"
 	"os"
 
-	"github.com/pion/webrtc/v3"
-	"github.com/yixinin/puup/ice"
-	"github.com/yixinin/puup/pnet"
+	pnet "github.com/yixinin/puup/net"
 )
 
 type ScpClient struct {
-	localFilename, remoteFilename, name string
-	mode                                string
+	localFilename, remoteFilename string
+	serverName                    string
+	sigAddr                       string
+	mode                          string
 }
 
 func NewScpClient(localFilename, remoteFilename string, name string) *ScpClient {
 	return &ScpClient{
 		localFilename:  localFilename,
 		remoteFilename: remoteFilename,
-		name:           name,
+		sigAddr:        name,
 	}
 }
 
 func (c *ScpClient) Run() error {
-	var pc, err = webrtc.NewPeerConnection(ice.Config)
-	if err != nil {
-		return err
-	}
-	sigCli := pnet.NewOfferClient(defaultpuup, c.name)
-	p, err := pnet.NewOfferPeer(pc, sigCli)
-	if err != nil {
-		return err
-	}
-	if err = p.Connect(); err != nil {
-		return err
-	}
-	conn, err := p.GetWebConn("")
+	conn, err := pnet.DialFile(c.sigAddr, c.serverName)
 	if err != nil {
 		return err
 	}

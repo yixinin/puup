@@ -5,7 +5,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/yixinin/puup/pnet"
+	"github.com/yixinin/puup/net"
 	"github.com/yixinin/puup/stderr"
 )
 
@@ -25,13 +25,13 @@ func NewProxy(port ...uint16) (*Proxy, error) {
 
 func (p *Proxy) Serve(rconn net.Conn) error {
 	defer func() {
-		conn, ok := rconn.(*pnet.Conn)
+		conn, ok := rconn.(*net.Conn)
 		if ok {
 			conn.Release()
 			conn.Close()
 		}
 	}()
-	port := rconn.RemoteAddr().(*pnet.LabelAddr).ProxyPort()
+	port := rconn.RemoteAddr().(*net.LabelAddr).ProxyPort()
 	if _, ok := p.ports[port]; !ok {
 		return stderr.New("invalid port proxy")
 	}

@@ -5,14 +5,14 @@ import "sync"
 type Backend struct {
 	sync.RWMutex
 
-	backendName string
-	sessions    map[string]*Session
+	sigAddr  string
+	sessions map[string]*Session
 }
 
 func NewBackend(name string) *Backend {
 	return &Backend{
-		backendName: name,
-		sessions:    make(map[string]*Session),
+		sigAddr:  name,
+		sessions: make(map[string]*Session),
 	}
 }
 
