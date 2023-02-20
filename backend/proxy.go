@@ -84,11 +84,11 @@ func Copy(src, dst net.Conn) error {
 
 	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
 		_, err := io.Copy(dst, src)
-		return err
+		return stderr.Wrap(err)
 	})
 	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
 		_, err := io.Copy(src, dst)
-		return err
+		return stderr.Wrap(err)
 	})
 
 	return nil
