@@ -12,8 +12,8 @@ func (s *Server) PostCandidate(c *gin.Context) {
 	c.MustBindWith(&req, binding.JSON)
 	b := s.GetBackend(req.Name)
 	sess := b.GetSession(req.Id)
-	if !sess.IsClose() {
-		c.String(200, "connection closed")
+	if sess.IsClose() {
+		c.String(200, "session closed")
 		return
 	}
 	defer c.String(200, "")

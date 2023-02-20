@@ -58,10 +58,9 @@ func (s *Server) Run(ctx context.Context) error {
 	e := gin.New()
 	e.Use(gin.Recovery())
 	e.Use(middles.Cors)
-	g := e.Group("/api")
-	g.Use(middles.CommonLogInterceptor())
+	g := e.Group("/api", middles.Logging())
 
-	g.POST("/sdp ", s.PostSdp)
+	g.POST("/sdp", s.PostSdp)
 	g.POST("/candidate", s.PostCandidate)
 	g.GET("/fetch", s.Fetch)
 	g.HEAD("/offline", s.Offline)

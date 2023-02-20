@@ -1,14 +1,15 @@
 package proxy
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
 	"sync"
 
-	"github.com/sirupsen/logrus"
 	pnet "github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
 )
 
@@ -16,22 +17,17 @@ func (p *Proxy) runForwards() error {
 	var wg sync.WaitGroup
 	for local, remote := range p.ports {
 		wg.Add(1)
-		go func(l, r uint16) {
+		l := local
+		r := remote
+		conn.GoFunc(context.TODO(), func(ctx context.Context) error {
 			defer wg.Done()
-			if err := p.runForward(l, r); err != nil {
-				logrus.Errorf("run forword :%d->%d error:%v", l, r, err)
-			}
-		}(local, remote)
+			return p.runForward(l, r)
+		})
 	}
 	wg.Wait()
 	return nil
 }
 func (p *Proxy) runForward(localPort, remotePort uint16) error {
-	cli := pnet.NewPeersClient()
-	_, err := cli.Connect(p.sigAddr, p.serverName)
-	if err != nil {
-		return stderr.Wrap(err)
-	}
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
 		return stderr.Wrap(err)
@@ -41,7 +37,7 @@ func (p *Proxy) runForward(localPort, remotePort uint16) error {
 		if err != nil {
 			return stderr.Wrap(err)
 		}
-		rconn, err := cli.Dial(p.sigAddr, p.serverName)
+		rconn, err := pnet.Dial(p.sigAddr, p.serverName)
 		if err != nil {
 			return stderr.Wrap(err)
 		}

@@ -28,11 +28,11 @@ func (rw bodyLogWriter) Close() error {
 	return nil
 }
 
-func CommonLogInterceptor() gin.HandlerFunc {
+func Logging() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		var blw bodyLogWriter
 		//if we need to log res body
+		var isFetch = strings.Contains(c.Request.RequestURI, "fetch")
 		if true {
 			var buf []byte
 			if c.Request.Body != nil {
@@ -47,14 +47,12 @@ func CommonLogInterceptor() gin.HandlerFunc {
 
 		c.Next()
 
-		if true {
+		if !isFetch || c.Writer.Status() == 200 {
 			strBody := strings.Trim(blw.bodyBuf.String(), "\n")
 			if len(strBody) > MAX_PRINT_BODY_LEN {
 				strBody = strBody[:(MAX_PRINT_BODY_LEN - 1)]
 			}
-			logrus.WithField("url", c.Request.RequestURI).Info("outgoing response", strBody)
-		} else {
-			logrus.WithField("url", c.Request.RequestURI).Info("outgoing response")
+			logrus.WithField("url", c.Request.RequestURI).Info("outgoing response: ", strBody)
 		}
 	}
 }

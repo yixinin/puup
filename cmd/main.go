@@ -31,7 +31,6 @@ var (
 )
 
 var shareDir string
-var serverName string
 var cfgFilename string
 
 type funcremove struct {
@@ -74,7 +73,6 @@ func main() {
 	flag.BoolVar(&runBrowser, "br", false, "run browser")
 	flag.StringVar(&logfile, "log", "", "log to filename")
 	flag.BoolVar(&debugLevel, "debug", false, "log debug mode")
-	flag.StringVar(&serverName, "name", "pi", "backend name")
 	flag.StringVar(&shareDir, "share", ".", "fileserver dir")
 	flag.Parse()
 	Init()

@@ -31,12 +31,12 @@ const (
 	Answer PeerType = "answer"
 )
 
-func (p PeerType) Url() string {
+func (p PeerType) SdpTYpe() webrtc.SDPType {
 	switch p {
 	case Offer:
-		return "front"
+		return webrtc.SDPTypeOffer
 	case Answer:
-		return "back"
+		return webrtc.SDPTypeAnswer
 	}
 	panic("unexpect peer type")
 }
@@ -294,7 +294,7 @@ func (p *Peer) Connect(ctx context.Context) error {
 		if c == nil {
 			return
 		}
-		err := p.sigCli.SendCandidate(ctx, p.clientId, c)
+		err := p.sigCli.SendCandidate(ctx, p.clientId, p.Type.SdpTYpe(), c)
 		if err != nil {
 			logrus.Errorf("send candidate error:%v", err)
 		}

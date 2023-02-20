@@ -13,8 +13,8 @@ func (s *Server) PostSdp(c *gin.Context) {
 
 	b := s.GetBackend(req.Name)
 	sess := b.GetSession(req.Id)
-	if !sess.IsClose() {
-		c.String(200, "connection closed")
+	if sess.IsClose() {
+		c.String(200, "session closed")
 		return
 	}
 

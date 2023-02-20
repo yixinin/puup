@@ -10,16 +10,21 @@ func (s *Server) Fetch(c *gin.Context) {
 	var req proto.FetchReq
 	c.BindQuery(&req)
 	var ack = new(proto.FetchAck)
-
-	defer c.JSON(200, ack)
-
+	defer func() {
+		if len(ack.Candidates) == 0 && ack.Sdp == nil {
+			c.String(203, "")
+		} else {
+			c.JSON(200, ack)
+		}
+	}()
 	b := s.GetBackend(req.Name)
 	var sess *Session
 	if req.Id != "" {
 		sess = b.GetSession(req.Id)
+	} else {
+		sess = b.RandSession()
 	}
 
-	sess = b.RandSession()
 	if sess == nil {
 		return
 	}

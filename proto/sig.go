@@ -3,14 +3,15 @@ package proto
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 
 	"github.com/pion/webrtc/v3"
 )
 
 type PostSdpReq struct {
-	Name string                    `json:"name"`
-	Id   string                    `json:"id"`
-	Sdp  webrtc.SessionDescription `json:"sdp"`
+	Name string                    `json:"name,omitempty"`
+	Id   string                    `json:"id,omitempty"`
+	Sdp  webrtc.SessionDescription `json:"sdp,omitempty"`
 }
 
 func GetPostSdpURL(sigAddr string) string {
@@ -18,10 +19,10 @@ func GetPostSdpURL(sigAddr string) string {
 }
 
 type PostCandidateReq struct {
-	Name      string               `json:"name"`
-	Id        string               `json:"id"`
-	Type      webrtc.SDPType       `json:"type"`
-	Candidate *webrtc.ICECandidate `json:"ice"`
+	Name      string               `json:"name,omitempty"`
+	Id        string               `json:"id,omitempty"`
+	Type      webrtc.SDPType       `json:"type,omitempty"`
+	Candidate *webrtc.ICECandidate `json:"ice,omitempty"`
 }
 
 func GetPostCandidateURL(sigAddr string) string {
@@ -46,15 +47,19 @@ type FetchReq struct {
 	Id   string         `form:"id"`
 }
 
-func GetFetchURL(sigAddr, serverName, id string) string {
+func GetFetchURL(sigAddr string, tp webrtc.SDPType, serverName, id string) string {
 	var vals = url.Values{}
 	vals.Add("name", serverName)
-	vals.Add("id", id)
+	vals.Add("type", strconv.Itoa(int(tp)))
+	if id != "" {
+		vals.Add("id", id)
+	}
+
 	return fmt.Sprintf("%s/api/fetch?%s", sigAddr, vals.Encode())
 }
 
 type FetchAck struct {
-	Id         string                     `json:"id"`
-	Sdp        *webrtc.SessionDescription `json:"sdp"`
-	Candidates []*webrtc.ICECandidate     `json:"ices"`
+	Id         string                     `json:"id,omitempty"`
+	Sdp        *webrtc.SessionDescription `json:"sdp,omitempty"`
+	Candidates []*webrtc.ICECandidate     `json:"ices,omitempty"`
 }

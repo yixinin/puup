@@ -1,5 +1,5 @@
 type: offer
-server_name: "pi"
+server_name: "v1"
 sig_addr: "http://114.115.218.1:8080"
 proxy:
   - local: 3489

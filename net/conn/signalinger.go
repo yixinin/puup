@@ -18,7 +18,7 @@ import (
 type Signalinger interface {
 	NewClient() chan string
 	SendSdp(ctx context.Context, id string, sdp webrtc.SessionDescription) error
-	SendCandidate(ctx context.Context, id string, ice *webrtc.ICECandidate) error
+	SendCandidate(ctx context.Context, id string, ty webrtc.SDPType, ice *webrtc.ICECandidate) error
 	RemoteSdp(id string) chan webrtc.SessionDescription
 	RemoteIceCandidates(id string) chan *webrtc.ICECandidate
 	Offline(ctx context.Context, clientId string) error
@@ -103,11 +103,11 @@ func (c *SignalingClient) OnCandidate(id string, ice *webrtc.ICECandidate) {
 }
 
 func (c *SignalingClient) FetchOffer() error {
-	return c.Fetch(proto.GetFetchURL(c.sigAddr, c.serverName, ""))
+	return c.Fetch(proto.GetFetchURL(c.sigAddr, webrtc.SDPTypeOffer, c.serverName, ""))
 }
 
 func (c *SignalingClient) FetchAnswer(id string) error {
-	return c.Fetch(proto.GetFetchURL(c.sigAddr, c.serverName, id))
+	return c.Fetch(proto.GetFetchURL(c.sigAddr, webrtc.SDPTypeAnswer, c.serverName, id))
 }
 
 func (c *SignalingClient) Fetch(url string) error {
@@ -117,6 +117,9 @@ func (c *SignalingClient) Fetch(url string) error {
 		return stderr.Wrap(err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == 203 {
+		return nil
+	}
 	if resp.StatusCode != 200 {
 		logrus.Errorf("send keepalive resp %d != 200", resp.StatusCode)
 		return stderr.Wrap(err)
@@ -159,10 +162,11 @@ func (c *SignalingClient) loop() {
 	}
 }
 
-func (c *SignalingClient) SendCandidate(ctx context.Context, id string, ice *webrtc.ICECandidate) error {
+func (c *SignalingClient) SendCandidate(ctx context.Context, id string, tp webrtc.SDPType, ice *webrtc.ICECandidate) error {
 	data, err := json.Marshal(proto.PostCandidateReq{
 		Name:      c.serverName,
 		Id:        id,
+		Type:      tp,
 		Candidate: ice,
 	})
 	if err != nil {
