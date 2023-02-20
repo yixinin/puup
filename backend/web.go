@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 
@@ -16,7 +17,7 @@ type WebServer struct {
 }
 
 func NewWebServer(cfg *config.Config) *WebServer {
-	lis := pnet.NewListener(cfg.SigAddr, cfg.ServerName)
+	lis := pnet.NewListener(cfg.SigAddr, fmt.Sprintf("%s.web", cfg.ServerName))
 	return &WebServer{lis: lis}
 }
 

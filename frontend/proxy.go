@@ -1,4 +1,4 @@
-package proxy
+package frontend
 
 import (
 	"context"
@@ -9,10 +9,34 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/config"
 	pnet "github.com/yixinin/puup/net"
 	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
 )
+
+type Proxy struct {
+	Type       conn.PeerType
+	sigAddr    string
+	serverName string
+	ports      map[uint16]uint16
+}
+
+func NewProxy(cfg *config.Config, pt conn.PeerType) (*Proxy, error) {
+	var ports = make(map[uint16]uint16)
+	for _, v := range cfg.ProxyFront {
+		ports[v.Local] = v.Remote
+	}
+	return &Proxy{
+		Type:       pt,
+		sigAddr:    cfg.SigAddr,
+		serverName: fmt.Sprintf("%s.proxy", cfg.ServerName),
+		ports:      ports,
+	}, nil
+}
+func (p *Proxy) Run(ctx context.Context) error {
+	return p.runForwards()
+}
 
 func (p *Proxy) runForwards() error {
 	var wg sync.WaitGroup
@@ -50,18 +74,29 @@ func (p *Proxy) runForward(localPort, remotePort uint16) error {
 			return err
 		}
 		logrus.Debugf("proxy %s, on port: %d, start to copy data", rconn.RemoteAddr(), remotePort)
-		go func(src, dst net.Conn) {
-			var wg sync.WaitGroup
-			wg.Add(2)
-			go func() {
-				io.Copy(src, dst)
-				wg.Done()
+		conn.GoFunc(context.TODO(), func(ctx context.Context) error {
+			defer func() {
+				rconn.(*pnet.Conn).Release()
 			}()
-			go func() {
-				io.Copy(dst, src)
-				wg.Done()
-			}()
-			wg.Wait()
-		}(lconn, rconn)
+			return Copy(lconn, rconn)
+		})
 	}
+}
+
+func Copy(src, dst net.Conn) error {
+	defer func() {
+		src.Close()
+		dst.Close()
+	}()
+
+	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
+		_, err := io.Copy(dst, src)
+		return err
+	})
+	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
+		_, err := io.Copy(src, dst)
+		return err
+	})
+
+	return nil
 }

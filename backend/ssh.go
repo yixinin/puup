@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"time"
 
@@ -25,7 +26,7 @@ type SshHeader struct {
 
 func NewSshServer(cfg *config.Config) *SshServer {
 	return &SshServer{
-		lis: pnet.NewListener(cfg.SigAddr, cfg.ServerName),
+		lis: pnet.NewListener(cfg.SigAddr, fmt.Sprintf("%s.ssh", cfg.ServerName)),
 	}
 }
 

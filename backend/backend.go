@@ -8,14 +8,13 @@ import (
 	_ "github.com/pion/mediadevices/pkg/driver/camera" // This is required to register camera adapter
 	"github.com/yixinin/puup/config"
 	"github.com/yixinin/puup/net/conn"
-	"github.com/yixinin/puup/proxy"
 )
 
 type Backend struct {
 	web   *WebServer
 	ssh   *SshServer
 	file  *FileServer
-	proxy *proxy.Proxy
+	proxy *Proxy
 
 	close chan struct{}
 }
@@ -27,7 +26,7 @@ func NewBackend(filename string) (*Backend, error) {
 	}
 	b := &Backend{}
 
-	proxy, err := proxy.NewProxy(cfg, conn.Answer)
+	proxy, err := NewProxy(cfg, conn.Answer)
 	if err != nil {
 		return nil, err
 	}

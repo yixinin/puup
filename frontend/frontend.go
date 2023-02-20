@@ -6,11 +6,10 @@ import (
 
 	"github.com/yixinin/puup/config"
 	"github.com/yixinin/puup/net/conn"
-	"github.com/yixinin/puup/proxy"
 )
 
 type FrontEnd struct {
-	proxy *proxy.Proxy
+	proxy *Proxy
 	file  *FileClient
 }
 
@@ -21,7 +20,7 @@ func NewFrontEnd(filename string) (*FrontEnd, error) {
 	}
 	f := &FrontEnd{}
 
-	proxy, err := proxy.NewProxy(cfg, conn.Offer)
+	proxy, err := NewProxy(cfg, conn.Offer)
 	if err != nil {
 		return nil, err
 	}

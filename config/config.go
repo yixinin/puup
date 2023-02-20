@@ -11,11 +11,17 @@ type ProxyPort struct {
 	Local  uint16 `yaml:"local"`
 	Remote uint16 `yaml:"remote,omitempty"`
 }
+type ProxyBack struct {
+	Addr  string   `yaml:"addr"`
+	Ports []uint16 `yaml:"ports"`
+}
+
 type Config struct {
 	Type       conn.PeerType `yaml:"type"`
 	ServerName string        `yaml:"server_name"`
 	SigAddr    string        `yaml:"sig_addr"`
-	Proxy      []ProxyPort   `yaml:"proxy"`
+	ProxyBack  *ProxyBack    `yaml:"proxy_back"`
+	ProxyFront []ProxyPort   `yaml:"proxy_front"`
 }
 
 func LoadConfig(filename string) (*Config, error) {

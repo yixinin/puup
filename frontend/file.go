@@ -3,6 +3,7 @@ package frontend
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -27,7 +28,7 @@ type FileClient struct {
 
 func NewFileClient(cfg *config.Config) *FileClient {
 	return &FileClient{
-		serverName: cfg.ServerName,
+		serverName: fmt.Sprintf("%s.file", cfg.ServerName),
 		sigAddr:    cfg.SigAddr,
 		ch:         make(chan CopyFile, 1),
 	}

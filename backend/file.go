@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -18,7 +19,7 @@ type FileServer struct {
 }
 
 func NewFileServer(cfg *config.Config) *FileServer {
-	lis := pnet.NewListener(cfg.SigAddr, cfg.ServerName)
+	lis := pnet.NewListener(cfg.SigAddr, fmt.Sprintf("%s.file", cfg.ServerName))
 	return &FileServer{lis: lis}
 }
 
