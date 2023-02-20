@@ -51,7 +51,7 @@ func (c *FileClient) Run(ctx context.Context) error {
 }
 
 func (c *FileClient) handle(file CopyFile) error {
-	conn, err := pnet.DialFile(c.sigAddr, c.serverName)
+	conn, err := pnet.Dial(c.sigAddr, c.serverName)
 	if err != nil {
 		return err
 	}

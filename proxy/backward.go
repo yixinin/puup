@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 
@@ -22,12 +23,17 @@ func (p *Proxy) runBackward(ports map[uint16]struct{}) error {
 			return stderr.Wrap(err)
 		}
 
-		raddr, ok := rconn.RemoteAddr().(*conn.LabelAddr)
-		if !ok {
-			return stderr.New("unknown addr")
+		var header = make([]byte, 2)
+		n, err := rconn.Read(header)
+		if err != nil {
+			return err
 		}
+		if n != 2 {
+			return stderr.New("proxy header error")
+		}
+		var port uint16
+		binary.BigEndian.PutUint16(header, port)
 
-		port := raddr.ProxyPort()
 		lconn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			return stderr.Wrap(err)

@@ -2,15 +2,26 @@ package conn
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
+	"io"
+	"net"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/proto"
 	"github.com/yixinin/puup/stderr"
+)
+
+type DcStatus string
+
+const (
+	Opening DcStatus = "opening"
+	Idle    DcStatus = "idle"
+	Active  DcStatus = "active"
+	Closed  DcStatus = "closed"
 )
 
 type PeerType string
@@ -43,33 +54,60 @@ type DataChannelCommand struct {
 	Label string
 }
 
+type ReadWriterReleaser interface {
+	io.ReadWriter
+	Release()
+	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
+}
+
 type Peer struct {
 	sync.Mutex
 
-	sigAddr  string
-	clientId string
+	serverName string
+	clientId   string
 
-	Type PeerType
-
-	connIdx uint32
-
+	Type   PeerType
 	sigCli Signalinger
 	pc     *webrtc.PeerConnection
 
-	onDataIn         chan string
-	connReleaseEvent chan string
-	cmdChan          chan DataChannelCommand
-	connected        chan struct{}
+	status DcStatus
+	data   *webrtc.DataChannel
 
-	actives map[string]*Conn
-	idles   map[string]*Conn
+	recvData chan []byte
+	accept   chan ReadWriterReleaser
 
-	close chan struct{}
+	cmdChan chan DataChannelCommand
+
+	connected chan struct{}
+	open      chan struct{}
+
+	laddr, raddr *PeerAddr
+	close        chan struct{}
 }
 
-func NewOfferPeer(pc *webrtc.PeerConnection, sigClient Signalinger) (*Peer, error) {
-	p := newPeer(pc, Offer)
-	p.sigCli = sigClient
+func newPeer(pc *webrtc.PeerConnection, serverName string, pt PeerType, sigClient Signalinger) *Peer {
+	p := &Peer{
+		serverName: serverName,
+		pc:         pc,
+		Type:       pt,
+		sigCli:     sigClient,
+		status:     Opening,
+		recvData:   make(chan []byte, 10),
+		cmdChan:    make(chan DataChannelCommand, 1),
+
+		connected: make(chan struct{}, 1),
+		open:      make(chan struct{}),
+		close:     make(chan struct{}),
+	}
+	go p.loop()
+	return p
+}
+
+func NewOfferPeer(pc *webrtc.PeerConnection, serverName string, sigClient Signalinger) (*Peer, error) {
+	p := newPeer(pc, serverName, Offer, sigClient)
+	p.clientId = strings.ReplaceAll(uuid.NewString(), "-", "")
+
 	dc, err := pc.CreateDataChannel("keepalive", nil)
 	if err != nil {
 		return nil, err
@@ -79,34 +117,15 @@ func NewOfferPeer(pc *webrtc.PeerConnection, sigClient Signalinger) (*Peer, erro
 		return p.loopKeepalive(ctx, dc)
 	})
 
-	GoFunc(context.TODO(), func(ctx context.Context) error {
-		return p.loopDataEvent(context.TODO(), nil)
-	})
 	return p, nil
 }
-func NewAnswerPeer(pc *webrtc.PeerConnection, id string, sigClient Signalinger, onConn chan *Conn) *Peer {
-	p := newPeer(pc, Answer)
-	p.sigCli = sigClient
-	go p.loopDataEvent(context.TODO(), onConn)
+func NewAnswerPeer(pc *webrtc.PeerConnection, serverName, id string, sigClient Signalinger, accept chan ReadWriterReleaser) *Peer {
+	p := newPeer(pc, serverName, Answer, sigClient)
+	p.clientId = id
+	p.accept = accept
 	return p
 }
 
-func newPeer(pc *webrtc.PeerConnection, pt PeerType) *Peer {
-	p := &Peer{
-		pc:               pc,
-		Type:             pt,
-		connReleaseEvent: make(chan string),
-		cmdChan:          make(chan DataChannelCommand, 1),
-
-		actives:   make(map[string]*Conn),
-		idles:     make(map[string]*Conn),
-		connected: make(chan struct{}, 1),
-		close:     make(chan struct{}),
-		onDataIn:  make(chan string, 1024),
-	}
-	go p.loop()
-	return p
-}
 func (p *Peer) loopKeepalive(ctx context.Context, dc *webrtc.DataChannel) error {
 	if dc == nil {
 		return stderr.New("data channel is nil ")
@@ -152,8 +171,14 @@ func (p *Peer) loopKeepalive(ctx context.Context, dc *webrtc.DataChannel) error 
 	}
 }
 
-func (p *Peer) ReleaseChan() chan string {
-	return p.connReleaseEvent
+func (p *Peer) setStatus(status DcStatus) bool {
+	p.Lock()
+	defer p.Unlock()
+	if status == p.status {
+		return false
+	}
+	p.status = status
+	return true
 }
 
 func (p *Peer) loop() {
@@ -161,42 +186,82 @@ func (p *Peer) loop() {
 		select {
 		case <-p.close:
 			return
-		case label := <-p.connReleaseEvent:
-			func() {
-				p.Lock()
-				defer p.Unlock()
-
-				conn, ok := p.actives[label]
-				if ok {
-					conn.SetStatus(Idle)
-					delete(p.actives, label)
-					p.idles[label] = conn
-				}
-			}()
 		case cmd := <-p.cmdChan:
-			func() {
-				p.Lock()
-				defer p.Unlock()
-				switch cmd.Cmd {
-				case CmdConnect:
-					_, ok := p.actives[cmd.Label]
-					if !ok {
-						logrus.Warning("cmd for idle conn, ignore.")
-						return
-					}
-				case CmdDisConnect:
-					_, ok := p.idles[cmd.Label]
-					if !ok {
-						logrus.Warning("cmd for active conn, ignore.")
-						return
-					}
-				case CmdEOF:
-				}
-			}()
+			switch cmd.Cmd {
+			case CmdConnect:
+
+			case CmdDisConnect:
+
+			case CmdEOF:
+			}
+
 		}
 	}
 }
 
+func (p *Peer) loopCommand(ctx context.Context, dc *webrtc.DataChannel) error {
+	var ch = make(chan error)
+	defer close(ch)
+
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		var cmd DataChannelCommand
+		err := json.Unmarshal(msg.Data, &cmd)
+		if err != nil {
+			select {
+			case ch <- err:
+			case <-ch:
+			}
+		}
+		p.cmdChan <- cmd
+	})
+	return <-ch
+}
+
+func (p *Peer) GetConn() (ReadWriterReleaser, error) {
+	t := time.NewTimer(2 * time.Minute)
+	defer t.Stop()
+	select {
+	case <-p.open:
+		return p, nil
+	case <-t.C:
+		return nil, context.DeadlineExceeded
+	}
+}
+
+func (p *Peer) loopDataChannel(ctx context.Context, dc *webrtc.DataChannel) error {
+	dc.OnOpen(func() {
+		close(p.open)
+		p.setStatus(Idle)
+		p.data = dc
+		var id = int(*p.data.ID())
+		p.laddr = NewPeerAddr(p.serverName, id, p.Type)
+		switch p.Type {
+		case Offer:
+			p.raddr = NewPeerAddr(p.serverName, id, Answer)
+		case Answer:
+			p.raddr = NewPeerAddr(p.serverName, id, Offer)
+		}
+	})
+
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		select {
+		case <-p.close:
+		case p.recvData <- msg.Data:
+			if p.setStatus(Active) {
+				p.accept <- p
+			}
+		}
+	})
+
+	dc.OnClose(func() {
+		p.setStatus(Closed)
+		p.Close()
+	})
+	return nil
+}
+func (p *Peer) ClientId() string {
+	return p.clientId
+}
 func (p *Peer) Connect(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -208,18 +273,22 @@ func (p *Peer) Connect(ctx context.Context) error {
 			return
 		}
 		logrus.Infof("data channel %s created", dc.Label())
-		if dc.Label() == string(Keepalive) {
+		switch ChannelType(dc.Label()) {
+		case Keepalive:
 			GoFunc(ctx, func(ctx context.Context) error {
 				return p.loopKeepalive(ctx, dc)
 			})
 			return
+		case Cmd:
+			GoFunc(ctx, func(ctx context.Context) error {
+				return p.loopCommand(ctx, dc)
+			})
+
+		default:
+			GoFunc(ctx, func(ctx context.Context) error {
+				return p.loopDataChannel(ctx, dc)
+			})
 		}
-
-		p.Lock()
-		defer p.Unlock()
-
-		d := NewConn(dc, p.onDataIn)
-		p.idles[dc.Label()] = d
 	})
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
@@ -243,6 +312,11 @@ func (p *Peer) Connect(ctx context.Context) error {
 
 	switch p.Type {
 	case Offer:
+		_, err := p.pc.CreateDataChannel("data", nil)
+		if err != nil {
+			return err
+		}
+
 		if err := p.SendOffer(ctx); err != nil {
 			return err
 		}
@@ -251,130 +325,6 @@ func (p *Peer) Connect(ctx context.Context) error {
 		}
 	case Answer:
 		return p.PollOffer(ctx)
-	}
-	return nil
-}
-
-func (p *Peer) loopDataEvent(ctx context.Context, onConn chan *Conn) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-p.close:
-			return nil
-		case key := <-p.onDataIn:
-			p.Lock()
-			conn, ok := p.actives[key]
-			if ok {
-				conn.dataEvent <- key
-			}
-			p.Unlock()
-			if onConn != nil {
-				conn := p.getIdle(key)
-				if conn != nil {
-					onConn <- conn
-					conn.dataEvent <- key
-				}
-			}
-		}
-	}
-}
-
-func (p *Peer) CreateConn(label string) (*Conn, error) {
-	// create new channel
-	dc, err := p.pc.CreateDataChannel(label, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	conn := NewConn(dc, p.onDataIn)
-	p.Lock()
-	defer p.Unlock()
-	conn.SetStatus(Active)
-	p.actives[conn.Label()] = conn
-	return conn, nil
-}
-
-func (p *Peer) CreateConnWithAddr(label string, local, remote *LabelAddr) (*Conn, error) {
-	conn, err := p.CreateConn(label)
-	if err != nil {
-		return nil, err
-	}
-	conn.localAddr = local
-	conn.remoteAddr = remote
-	return conn, nil
-}
-
-func (p *Peer) GetWebConn(labels ...string) (*Conn, error) {
-	// try get session from idles
-	if len(labels) > 0 && labels[0] != "" {
-		if conn := p.getIdle(labels[0]); conn != nil {
-			return conn, nil
-		}
-	}
-
-	idx := atomic.AddUint32(&p.connIdx, 1)
-	label := fmt.Sprintf("webx%d", idx)
-	laddr := NewWebAddr(p.sigAddr, uint64(idx))
-	raddr := NewWebAddr(p.clientId, uint64(idx))
-	return p.CreateConnWithAddr(label, laddr, raddr)
-}
-
-func (p *Peer) GetFileConn(labels ...string) (*Conn, error) {
-	// try get session from idles
-	if len(labels) > 0 && labels[0] != "" {
-		if conn := p.getIdle(labels[0]); conn != nil {
-			return conn, nil
-		}
-	}
-
-	idx := atomic.AddUint32(&p.connIdx, 1)
-	label := fmt.Sprintf("filex%d", idx)
-	laddr := NewWebAddr(p.sigAddr, uint64(idx))
-	raddr := NewWebAddr(p.clientId, uint64(idx))
-	return p.CreateConnWithAddr(label, laddr, raddr)
-}
-func (p *Peer) GetProxyConn(port uint16) (*Conn, error) {
-	label := fmt.Sprintf("%sx%d", proto.Proxy, port)
-	// try get session from idles
-	if conn := p.getIdle(label); conn != nil {
-		return conn, nil
-	}
-	return p.CreateConn(label)
-}
-func (p *Peer) GetSshConn() (*Conn, error) {
-	label := string(proto.Ssh)
-	// try get session from idles
-	if conn := p.getIdle(label); conn != nil {
-		return conn, nil
-	}
-	return p.CreateConn(label)
-}
-
-func (c *Peer) getIdle(label string) *Conn {
-	c.Lock()
-	defer c.Unlock()
-	if len(c.idles) == 0 {
-		return nil
-	}
-	var conn *Conn
-	if label != "" {
-		conn = c.idles[label]
-	} else {
-		for k, v := range c.idles {
-			if !v.IsClose() {
-				label = k
-				conn = v
-				break
-			}
-		}
-	}
-
-	if conn != nil {
-		delete(c.idles, label)
-		conn.SetStatus(Active)
-		c.actives[label] = conn
-		return conn
 	}
 	return nil
 }
@@ -399,4 +349,15 @@ func (p *Peer) Close() error {
 	err := p.pc.Close()
 	close(p.close)
 	return err
+}
+
+func (p *Peer) Release() {
+	p.setStatus(Idle)
+}
+
+func (p *Peer) LocalAddr() net.Addr {
+	return p.laddr
+}
+func (p *Peer) RemoteAddr() net.Addr {
+	return p.raddr
 }

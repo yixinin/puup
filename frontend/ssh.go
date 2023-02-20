@@ -33,7 +33,7 @@ func NewSshClient() *SshClient {
 }
 
 func (c *SshClient) Run(user, name, pass string) error {
-	conn, err := net.DialSsh(c.sigAddr, c.serverName)
+	conn, err := net.Dial(c.sigAddr, c.serverName)
 	if err != nil {
 		return err
 	}

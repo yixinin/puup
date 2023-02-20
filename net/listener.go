@@ -9,18 +9,17 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/ice"
 	"github.com/yixinin/puup/net/conn"
-	"github.com/yixinin/puup/stderr"
 )
 
 type Listener struct {
 	sync.RWMutex
 
-	sigClient *conn.SignalingClient
+	serverName string
+	sigClient  *conn.SignalingClient
 
 	onClose chan string
-	onConn  chan *conn.Conn
-
-	peers map[string]*conn.Peer
+	onConn  chan conn.ReadWriterReleaser
+	peers   map[string]*conn.Peer
 
 	isClose bool
 	close   chan struct{}
@@ -28,12 +27,12 @@ type Listener struct {
 
 func NewListener(sigAddr, serverName string) *Listener {
 	lis := &Listener{
-		sigClient: conn.NewSignalingClient(conn.Answer, sigAddr, serverName),
-
-		onClose: make(chan string, 1),
-		onConn:  make(chan *conn.Conn, 10),
-		peers:   make(map[string]*conn.Peer, 1),
-		close:   make(chan struct{}, 1),
+		sigClient:  conn.NewSignalingClient(conn.Answer, sigAddr, serverName),
+		serverName: serverName,
+		onClose:    make(chan string, 1),
+		onConn:     make(chan conn.ReadWriterReleaser, 10),
+		peers:      make(map[string]*conn.Peer, 1),
+		close:      make(chan struct{}, 1),
 	}
 	go lis.loop()
 	return lis
@@ -44,12 +43,9 @@ func (l *Listener) Accept() (net.Conn, error) {
 		select {
 		case <-l.close:
 			return nil, net.ErrClosed
-		case cc := <-l.onConn:
-			p, ok := l.peers[cc.ClientId()]
-			if !ok {
-				return nil, stderr.New("peer is invalid")
-			}
-			conn := NewConn(cc, p.ReleaseChan())
+		case rwr := <-l.onConn:
+
+			conn := NewConn(rwr)
 			return conn, nil
 		}
 	}
@@ -112,7 +108,7 @@ FOR:
 				continue
 			}
 
-			p := conn.NewAnswerPeer(pc, clientId, l.sigClient, l.onConn)
+			p := conn.NewAnswerPeer(pc, l.serverName, clientId, l.sigClient, l.onConn)
 			l.AddPeer(clientId, p)
 			go func() {
 				if err := p.Connect(context.TODO()); err != nil {

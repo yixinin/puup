@@ -21,7 +21,7 @@ func NewFrontEnd(filename string) (*FrontEnd, error) {
 	}
 	f := &FrontEnd{}
 
-	proxy, err := proxy.NewProxy(cfg, conn.Answer)
+	proxy, err := proxy.NewProxy(cfg, conn.Offer)
 	if err != nil {
 		return nil, err
 	}

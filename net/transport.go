@@ -25,7 +25,7 @@ func NewTransport(sigAddr, name string) (http.RoundTripper, error) {
 }
 
 func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
-	c, err := t.client.DialWeb(t.sigAddr, t.backName)
+	c, err := t.client.Dial(t.sigAddr, t.backName)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -27,7 +28,7 @@ func (p *Proxy) runForwards() error {
 }
 func (p *Proxy) runForward(localPort, remotePort uint16) error {
 	cli := pnet.NewPeersClient()
-	err := cli.Connect(p.sigAddr, p.serverName)
+	_, err := cli.Connect(p.sigAddr, p.serverName)
 	if err != nil {
 		return stderr.Wrap(err)
 	}
@@ -40,9 +41,15 @@ func (p *Proxy) runForward(localPort, remotePort uint16) error {
 		if err != nil {
 			return stderr.Wrap(err)
 		}
-		rconn, err := cli.DialProxy(p.sigAddr, p.serverName, remotePort)
+		rconn, err := cli.Dial(p.sigAddr, p.serverName)
 		if err != nil {
 			return stderr.Wrap(err)
+		}
+		var header = make([]byte, 2)
+		binary.BigEndian.PutUint16(header, remotePort)
+		_, err = rconn.Write(header)
+		if err != nil {
+			return err
 		}
 		go func(src, dst net.Conn) {
 			var wg sync.WaitGroup

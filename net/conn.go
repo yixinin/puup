@@ -1,7 +1,6 @@
 package net
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"net"
@@ -15,27 +14,24 @@ import (
 
 type Conn struct {
 	sync.RWMutex
-	*conn.Conn
+
+	conn.ReadWriterReleaser
 
 	isRelease bool
-	release   chan string
 	close     chan struct{}
 	// new data received
 	dataEvent chan struct{}
 
 	rdl      time.Time
-	buffer   *bufio.Reader
 	sendPool chan []byte
 }
 
-func NewConn(cc *conn.Conn, release chan string) *Conn {
+func NewConn(rwr conn.ReadWriterReleaser) *Conn {
 	c := &Conn{
-		Conn:      cc,
-		release:   release,
-		close:     make(chan struct{}),
-		dataEvent: make(chan struct{}, 1),
-		buffer:    bufio.NewReader(cc),
-		sendPool:  make(chan []byte),
+		ReadWriterReleaser: rwr,
+		close:              make(chan struct{}),
+		dataEvent:          make(chan struct{}, 1),
+		sendPool:           make(chan []byte),
 	}
 	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
 		return c.loopSend(ctx)
@@ -50,6 +46,7 @@ func (s *Conn) IsClose() bool {
 	select {
 	case <-s.close:
 		return true
+	default:
 	}
 	return false
 }
@@ -106,17 +103,13 @@ func (c *Conn) Read(data []byte) (n int, err error) {
 		return 0, err
 	}
 
-	if c.buffer.Buffered() > 0 {
-		return c.buffer.Read(data)
-	}
-
 	select {
 	case <-c.close:
 		return 0, net.ErrClosed
 	case <-tm.C:
 		return 0, context.DeadlineExceeded
 	case <-c.dataEvent:
-		return c.buffer.Read(data)
+		return c.ReadWriterReleaser.Read(data)
 	}
 }
 
@@ -137,7 +130,7 @@ func (c *Conn) loopSend(ctx context.Context) error {
 		case <-c.close:
 			return nil
 		case data := <-c.sendPool:
-			_, err := c.Conn.Write(data)
+			_, err := c.ReadWriterReleaser.Write(data)
 			if err != nil {
 				logrus.Errorf("send channel data failed, session will be closed! error:%v", err)
 				return err
@@ -156,7 +149,7 @@ func (c *Conn) Release() {
 		return
 	}
 	c.isRelease = true
-	c.release <- c.Label()
+	c.ReadWriterReleaser.Release()
 }
 
 func (c *Conn) Close() error {
