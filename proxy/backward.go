@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/sirupsen/logrus"
 	pnet "github.com/yixinin/puup/net"
 	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
@@ -23,6 +24,7 @@ func (p *Proxy) runBackward(ports map[uint16]struct{}) error {
 			return stderr.Wrap(err)
 		}
 
+		logrus.Debugf("proxy from %s, read port", rconn.RemoteAddr())
 		var header = make([]byte, 2)
 		n, err := rconn.Read(header)
 		if err != nil {
@@ -33,7 +35,7 @@ func (p *Proxy) runBackward(ports map[uint16]struct{}) error {
 		}
 		var port uint16
 		binary.BigEndian.PutUint16(header, port)
-
+		logrus.Debugf("proxy %s, on port: %d, start to copy data", rconn.RemoteAddr(), port)
 		lconn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			return stderr.Wrap(err)

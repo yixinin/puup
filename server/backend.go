@@ -24,6 +24,17 @@ func (b *Backend) GetSession(id string) *Session {
 	if ok {
 		return sess
 	}
+	return nil
+}
+
+func (b *Backend) MustGetSession(id string) *Session {
+	b.Lock()
+	defer b.Unlock()
+
+	sess, ok := b.sessions[id]
+	if ok {
+		return sess
+	}
 	sess = NewSession(id)
 	b.sessions[id] = sess
 	return sess

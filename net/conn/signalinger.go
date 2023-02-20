@@ -102,12 +102,8 @@ func (c *SignalingClient) OnCandidate(id string, ice *webrtc.ICECandidate) {
 	c.GetIceChan(id) <- ice
 }
 
-func (c *SignalingClient) FetchOffer() error {
-	return c.Fetch(proto.GetFetchURL(c.sigAddr, webrtc.SDPTypeOffer, c.serverName, ""))
-}
-
-func (c *SignalingClient) FetchAnswer(id string) error {
-	return c.Fetch(proto.GetFetchURL(c.sigAddr, webrtc.SDPTypeAnswer, c.serverName, id))
+func (c *SignalingClient) FetchSdp(tp webrtc.SDPType) error {
+	return c.Fetch(proto.GetFetchURL(c.sigAddr, tp, c.serverName, ""))
 }
 
 func (c *SignalingClient) Fetch(url string) error {
@@ -154,7 +150,7 @@ func (c *SignalingClient) loop() {
 		case <-c.close:
 			return
 		case <-tk.C:
-			err := c.FetchOffer()
+			err := c.FetchSdp(c.localType.SdpTYpe())
 			if err != nil {
 				logrus.Errorf("fetch error:%v", err)
 			}

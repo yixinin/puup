@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/sirupsen/logrus"
 	pnet "github.com/yixinin/puup/net"
 	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
@@ -41,12 +42,14 @@ func (p *Proxy) runForward(localPort, remotePort uint16) error {
 		if err != nil {
 			return stderr.Wrap(err)
 		}
+		logrus.Debugf("proxy %s, on port: %d, write header", rconn.RemoteAddr(), remotePort)
 		var header = make([]byte, 2)
 		binary.BigEndian.PutUint16(header, remotePort)
 		_, err = rconn.Write(header)
 		if err != nil {
 			return err
 		}
+		logrus.Debugf("proxy %s, on port: %d, start to copy data", rconn.RemoteAddr(), remotePort)
 		go func(src, dst net.Conn) {
 			var wg sync.WaitGroup
 			wg.Add(2)

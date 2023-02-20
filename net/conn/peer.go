@@ -232,7 +232,6 @@ func (p *Peer) loopDataChannel(ctx context.Context, dc *webrtc.DataChannel) erro
 	dc.OnOpen(func() {
 		close(p.open)
 		p.setStatus(Idle)
-		p.data = dc
 		var id = int(*p.data.ID())
 		p.laddr = NewPeerAddr(p.serverName, id, p.Type)
 		switch p.Type {
@@ -262,6 +261,26 @@ func (p *Peer) loopDataChannel(ctx context.Context, dc *webrtc.DataChannel) erro
 func (p *Peer) ClientId() string {
 	return p.clientId
 }
+
+func (p *Peer) handleChannel(dc *webrtc.DataChannel) {
+	switch ChannelType(dc.Label()) {
+	case Keepalive:
+		GoFunc(context.TODO(), func(ctx context.Context) error {
+			return p.loopKeepalive(ctx, dc)
+		})
+		return
+	case Cmd:
+		GoFunc(context.TODO(), func(ctx context.Context) error {
+			return p.loopCommand(ctx, dc)
+		})
+
+	default:
+		p.data = dc
+		GoFunc(context.TODO(), func(ctx context.Context) error {
+			return p.loopDataChannel(ctx, dc)
+		})
+	}
+}
 func (p *Peer) Connect(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -273,22 +292,7 @@ func (p *Peer) Connect(ctx context.Context) error {
 			return
 		}
 		logrus.Infof("data channel %s created", dc.Label())
-		switch ChannelType(dc.Label()) {
-		case Keepalive:
-			GoFunc(ctx, func(ctx context.Context) error {
-				return p.loopKeepalive(ctx, dc)
-			})
-			return
-		case Cmd:
-			GoFunc(ctx, func(ctx context.Context) error {
-				return p.loopCommand(ctx, dc)
-			})
-
-		default:
-			GoFunc(ctx, func(ctx context.Context) error {
-				return p.loopDataChannel(ctx, dc)
-			})
-		}
+		p.handleChannel(dc)
 	})
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
 		if c == nil {
@@ -312,10 +316,11 @@ func (p *Peer) Connect(ctx context.Context) error {
 
 	switch p.Type {
 	case Offer:
-		_, err := p.pc.CreateDataChannel("data", nil)
+		dc, err := p.pc.CreateDataChannel("data", nil)
 		if err != nil {
 			return err
 		}
+		p.handleChannel(dc)
 
 		if err := p.SendOffer(ctx); err != nil {
 			return err

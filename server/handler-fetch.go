@@ -1,8 +1,11 @@
 package server
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/pion/webrtc/v3"
+	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/proto"
 )
 
@@ -28,13 +31,18 @@ func (s *Server) Fetch(c *gin.Context) {
 	if sess == nil {
 		return
 	}
+	req.Id = sess.Id
+	ack.Id = sess.Id
 	if sess.IsClose() {
+		logrus.Debugf("session %s %s %s is close", req.Name, req.Id, req.Type)
 		return
 	}
 	fetchSession(req.Type, sess, ack)
 }
 
 func fetchSession(typ webrtc.SDPType, sess *Session, ack *proto.FetchAck) {
+	var t = time.NewTimer(time.Second)
+	defer t.Stop()
 	switch typ {
 	case webrtc.SDPTypeOffer:
 		for {
@@ -43,7 +51,7 @@ func fetchSession(typ webrtc.SDPType, sess *Session, ack *proto.FetchAck) {
 				ack.Sdp = &sdp
 			case ice := <-sess.answerIce:
 				ack.Candidates = append(ack.Candidates, ice)
-			default:
+			case <-t.C:
 				return
 			}
 		}
@@ -55,7 +63,7 @@ func fetchSession(typ webrtc.SDPType, sess *Session, ack *proto.FetchAck) {
 				ack.Sdp = &sdp
 			case ice := <-sess.offerIce:
 				ack.Candidates = append(ack.Candidates, ice)
-			default:
+			case <-t.C:
 				return
 			}
 		}

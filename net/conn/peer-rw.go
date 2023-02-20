@@ -18,6 +18,7 @@ func (p *Peer) Read(data []byte) (int, error) {
 }
 
 func (p *Peer) Write(data []byte) (int, error) {
+	<-p.open
 	err := p.data.Send(data)
 	return len(data), err
 }

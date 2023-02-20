@@ -33,12 +33,15 @@ func Logging() gin.HandlerFunc {
 		var blw bodyLogWriter
 		//if we need to log res body
 		var isFetch = strings.Contains(c.Request.RequestURI, "fetch")
-		if true {
+		if !isFetch {
 			var buf []byte
 			if c.Request.Body != nil {
 				buf, _ = io.ReadAll(c.Request.Body)
 			}
-			logrus.WithField("url", c.Request.RequestURI).WithField("addr", c.Request.RemoteAddr).Info("incoming request", string(buf))
+			logrus.WithField("url", c.Request.URL.Path).
+				WithField("form", c.Request.URL.Query()).
+				WithField("addr", c.Request.RemoteAddr).
+				Info("incoming request", string(buf))
 
 			blw = bodyLogWriter{bodyBuf: bytes.NewBuffer(buf), ResponseWriter: c.Writer}
 			c.Request.Body = blw
@@ -52,7 +55,7 @@ func Logging() gin.HandlerFunc {
 			if len(strBody) > MAX_PRINT_BODY_LEN {
 				strBody = strBody[:(MAX_PRINT_BODY_LEN - 1)]
 			}
-			logrus.WithField("url", c.Request.RequestURI).Info("outgoing response: ", strBody)
+			logrus.WithField("url", c.Request.URL.Path).Infof("outgoing response: %s", strBody)
 		}
 	}
 }
