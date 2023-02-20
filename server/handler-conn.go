@@ -35,7 +35,7 @@ func fetchSession(typ webrtc.SDPType, sess *Session, ack *proto.FetchAck) {
 		for {
 			select {
 			case sdp := <-sess.answer:
-				ack.Sdp = sdp
+				ack.Sdp = &sdp
 			case ice := <-sess.answerIce:
 				ack.Candidates = append(ack.Candidates, ice)
 			default:
@@ -47,7 +47,7 @@ func fetchSession(typ webrtc.SDPType, sess *Session, ack *proto.FetchAck) {
 		for {
 			select {
 			case sdp := <-sess.offer:
-				ack.Sdp = sdp
+				ack.Sdp = &sdp
 			case ice := <-sess.offerIce:
 				ack.Candidates = append(ack.Candidates, ice)
 			default:

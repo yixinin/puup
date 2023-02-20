@@ -2,7 +2,6 @@ package backend
 
 import (
 	"context"
-	"net"
 	"sync"
 
 	// This is required to use H264 video encoder
@@ -13,10 +12,6 @@ import (
 )
 
 type Backend struct {
-	lis *net.Listener
-
-	cfg *config.Config
-
 	web   *WebServer
 	ssh   *SshServer
 	file  *FileServer
@@ -32,7 +27,7 @@ func NewBackend(filename string) (*Backend, error) {
 	}
 	b := &Backend{}
 
-	proxy, err := proxy.NewProxy(cfg.Proxy, conn.Answer)
+	proxy, err := proxy.NewProxy(cfg, conn.Answer)
 	if err != nil {
 		return nil, err
 	}
@@ -65,5 +60,15 @@ func (b *Backend) Run(ctx context.Context) error {
 		return b.proxy.Run(ctx)
 	})
 	wg.Wait()
+	return nil
+}
+
+func (b *Backend) Close() error {
+	select {
+	case <-b.close:
+		return nil
+	default:
+	}
+	close(b.close)
 	return nil
 }

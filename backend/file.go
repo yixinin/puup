@@ -18,7 +18,7 @@ type FileServer struct {
 }
 
 func NewFileServer(cfg *config.Config) *FileServer {
-	lis := pnet.NewListener(cfg.ServerName, cfg.SigAddr)
+	lis := pnet.NewListener(cfg.SigAddr, cfg.ServerName)
 	return &FileServer{lis: lis}
 }
 

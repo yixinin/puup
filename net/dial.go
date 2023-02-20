@@ -10,17 +10,17 @@ func init() {
 	peerClient = NewPeersClient()
 }
 
-func DialWeb(serverAddr, sigAddr string) (net.Conn, error) {
-	return peerClient.DialWeb(serverAddr, sigAddr)
+func DialWeb(sigAddr, serverName string) (net.Conn, error) {
+	return peerClient.DialWeb(sigAddr, serverName)
 }
-func DialSsh(serverAddr, sigAddr string) (net.Conn, error) {
-	return peerClient.DialSsh(serverAddr, sigAddr)
-}
-
-func DialFile(serverAddr, sigAddr string) (net.Conn, error) {
-	return peerClient.DialFile(serverAddr, sigAddr)
+func DialSsh(sigAddr, serverName string) (net.Conn, error) {
+	return peerClient.DialSsh(sigAddr, serverName)
 }
 
-func DialProxy(serverAddr, sigAddr string, port uint16) (net.Conn, error) {
-	return peerClient.DialProxy(serverAddr, sigAddr, port)
+func DialFile(sigAddr, serverName string) (net.Conn, error) {
+	return peerClient.DialFile(sigAddr, serverName)
+}
+
+func DialProxy(sigAddr, serverName string, port uint16) (net.Conn, error) {
+	return peerClient.DialProxy(sigAddr, serverName, port)
 }

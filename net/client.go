@@ -42,8 +42,8 @@ func (c *PeersClient) getPeer(serverName string) (*conn.Peer, bool) {
 	return nil, false
 }
 
-func (c *PeersClient) Connect(serverAddr, serverName string) error {
-	peer, ok := c.getPeer(serverName)
+func (c *PeersClient) Connect(sigAddr, serverName string) error {
+	_, ok := c.getPeer(serverName)
 	if ok {
 		return nil
 	}
@@ -51,8 +51,8 @@ func (c *PeersClient) Connect(serverAddr, serverName string) error {
 	if err != nil {
 		return stderr.Wrap(err)
 	}
-	sigCli := conn.NewSignalingClient(conn.Offer, serverAddr, serverName)
-	peer, err = conn.NewOfferPeer(pc, sigCli)
+	sigCli := conn.NewSignalingClient(conn.Offer, sigAddr, serverName)
+	peer, err := conn.NewOfferPeer(pc, sigCli)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (c *PeersClient) DialWeb(sigAddr, serverName string) (net.Conn, error) {
 	return conn, nil
 }
 
-func (c *PeersClient) DialFile(serverAddr, serverName string) (net.Conn, error) {
+func (c *PeersClient) DialFile(sigAddr, serverName string) (net.Conn, error) {
 	p, ok := c.getPeer(serverName)
 	if ok {
 		cc, err := p.GetFileConn()
@@ -109,7 +109,7 @@ func (c *PeersClient) DialFile(serverAddr, serverName string) (net.Conn, error) 
 	if err != nil {
 		return nil, stderr.Wrap(err)
 	}
-	sig := conn.NewSignalingClient(conn.Offer, serverAddr, serverName)
+	sig := conn.NewSignalingClient(conn.Offer, sigAddr, serverName)
 	p, err = conn.NewOfferPeer(pc, sig)
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ func (c *PeersClient) DialFile(serverAddr, serverName string) (net.Conn, error) 
 	return conn, nil
 }
 
-func (c *PeersClient) DialSsh(serverAddr, serverName string) (net.Conn, error) {
+func (c *PeersClient) DialSsh(sigAddr, serverName string) (net.Conn, error) {
 	p, ok := c.getPeer(serverName)
 	if ok {
 		cc, err := p.GetSshConn()
@@ -141,7 +141,7 @@ func (c *PeersClient) DialSsh(serverAddr, serverName string) (net.Conn, error) {
 	if err != nil {
 		return nil, stderr.Wrap(err)
 	}
-	sig := conn.NewSignalingClient(conn.Offer, serverAddr, serverName)
+	sig := conn.NewSignalingClient(conn.Offer, sigAddr, serverName)
 	p, err = conn.NewOfferPeer(pc, sig)
 	if err != nil {
 		return nil, err
@@ -159,7 +159,7 @@ func (c *PeersClient) DialSsh(serverAddr, serverName string) (net.Conn, error) {
 	return conn, nil
 }
 
-func (c *PeersClient) DialProxy(serverAddr, serverName string, port uint16) (net.Conn, error) {
+func (c *PeersClient) DialProxy(sigAddr, serverName string, port uint16) (net.Conn, error) {
 	p, ok := c.getPeer(serverName)
 	if ok {
 		cc, err := p.GetProxyConn(port)
@@ -173,7 +173,7 @@ func (c *PeersClient) DialProxy(serverAddr, serverName string, port uint16) (net
 	if err != nil {
 		return nil, stderr.Wrap(err)
 	}
-	sig := conn.NewSignalingClient(conn.Offer, serverAddr, serverName)
+	sig := conn.NewSignalingClient(conn.Offer, sigAddr, serverName)
 	p, err = conn.NewOfferPeer(pc, sig)
 	if err != nil {
 		return nil, err

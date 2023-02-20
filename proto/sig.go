@@ -13,8 +13,8 @@ type PostSdpReq struct {
 	Sdp  webrtc.SessionDescription `json:"sdp"`
 }
 
-func GetPostSdpURL(serverAddr string) string {
-	return fmt.Sprintf("%s/sdp", serverAddr)
+func GetPostSdpURL(sigAddr string) string {
+	return fmt.Sprintf("%s/api/sdp", sigAddr)
 }
 
 type PostCandidateReq struct {
@@ -24,8 +24,8 @@ type PostCandidateReq struct {
 	Candidate *webrtc.ICECandidate `json:"ice"`
 }
 
-func GetPostCandidateURL(serverAddr string) string {
-	return fmt.Sprintf("%s/candidate", serverAddr)
+func GetPostCandidateURL(sigAddr string) string {
+	return fmt.Sprintf("%s/api/candidate", sigAddr)
 }
 
 type OfflineReq struct {
@@ -33,11 +33,11 @@ type OfflineReq struct {
 	Id   string `form:"id"`
 }
 
-func GetOfflineURL(serverAddr, serverName, id string) string {
+func GetOfflineURL(sigAddr, serverName, id string) string {
 	var vals = url.Values{}
 	vals.Add("name", serverName)
 	vals.Add("id", id)
-	return fmt.Sprintf("%s/offline?%s", serverAddr, vals.Encode())
+	return fmt.Sprintf("%s/api/offline?%s", sigAddr, vals.Encode())
 }
 
 type FetchReq struct {
@@ -46,15 +46,15 @@ type FetchReq struct {
 	Id   string         `form:"id"`
 }
 
-func GetFetchURL(serverAddr, serverName, id string) string {
+func GetFetchURL(sigAddr, serverName, id string) string {
 	var vals = url.Values{}
 	vals.Add("name", serverName)
 	vals.Add("id", id)
-	return fmt.Sprintf("%s/fetch?%s", serverAddr, vals.Encode())
+	return fmt.Sprintf("%s/api/fetch?%s", sigAddr, vals.Encode())
 }
 
 type FetchAck struct {
-	Id         string                    `json:"id"`
-	Sdp        webrtc.SessionDescription `json:"sdp"`
-	Candidates []*webrtc.ICECandidate    `json:"ices"`
+	Id         string                     `json:"id"`
+	Sdp        *webrtc.SessionDescription `json:"sdp"`
+	Candidates []*webrtc.ICECandidate     `json:"ices"`
 }

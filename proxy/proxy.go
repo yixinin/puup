@@ -3,14 +3,10 @@ package proxy
 import (
 	"context"
 
+	"github.com/yixinin/puup/config"
 	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
 )
-
-type ProxyPort struct {
-	Local  uint16 `yaml:"local"`
-	Remote uint16 `yaml:"remote,omitempty"`
-}
 
 type Proxy struct {
 	Type       conn.PeerType
@@ -19,14 +15,16 @@ type Proxy struct {
 	ports      map[uint16]uint16
 }
 
-func NewProxy(cfg []ProxyPort, pt conn.PeerType) (*Proxy, error) {
+func NewProxy(cfg *config.Config, pt conn.PeerType) (*Proxy, error) {
 	var ports = make(map[uint16]uint16)
-	for _, v := range cfg {
+	for _, v := range cfg.Proxy {
 		ports[v.Local] = v.Remote
 	}
 	return &Proxy{
-		Type:  pt,
-		ports: ports,
+		Type:       pt,
+		sigAddr:    cfg.SigAddr,
+		serverName: cfg.ServerName,
+		ports:      ports,
 	}, nil
 }
 func (p *Proxy) Run(ctx context.Context) error {

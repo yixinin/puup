@@ -25,7 +25,7 @@ type SshHeader struct {
 
 func NewSshServer(cfg *config.Config) *SshServer {
 	return &SshServer{
-		lis: pnet.NewListener(cfg.ServerName, cfg.SigAddr),
+		lis: pnet.NewListener(cfg.SigAddr, cfg.ServerName),
 	}
 }
 

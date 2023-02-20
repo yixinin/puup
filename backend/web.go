@@ -16,7 +16,7 @@ type WebServer struct {
 }
 
 func NewWebServer(cfg *config.Config) *WebServer {
-	lis := pnet.NewListener(cfg.ServerName, cfg.SigAddr)
+	lis := pnet.NewListener(cfg.SigAddr, cfg.ServerName)
 	return &WebServer{lis: lis}
 }
 

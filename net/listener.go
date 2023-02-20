@@ -26,7 +26,7 @@ type Listener struct {
 	close   chan struct{}
 }
 
-func NewListener(serverName, sigAddr string) *Listener {
+func NewListener(sigAddr, serverName string) *Listener {
 	lis := &Listener{
 		sigClient: conn.NewSignalingClient(conn.Answer, sigAddr, serverName),
 

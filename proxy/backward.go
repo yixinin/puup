@@ -15,7 +15,7 @@ type ProxyHeader struct {
 }
 
 func (p *Proxy) runBackward(ports map[uint16]struct{}) error {
-	lis := pnet.NewListener(p.serverName, p.sigAddr)
+	lis := pnet.NewListener(p.sigAddr, p.serverName)
 	for {
 		rconn, err := lis.Accept()
 		if err != nil {

@@ -4,15 +4,18 @@ import (
 	"os"
 
 	"github.com/yixinin/puup/net/conn"
-	"github.com/yixinin/puup/proxy"
 	"gopkg.in/yaml.v2"
 )
 
+type ProxyPort struct {
+	Local  uint16 `yaml:"local"`
+	Remote uint16 `yaml:"remote,omitempty"`
+}
 type Config struct {
-	Type       conn.PeerType     `yaml:"type"`
-	ServerName string            `yaml:"server_name"`
-	SigAddr    string            `yaml:"sig_addr"`
-	Proxy      []proxy.ProxyPort `yaml:"proxy"`
+	Type       conn.PeerType `yaml:"type"`
+	ServerName string        `yaml:"server_name"`
+	SigAddr    string        `yaml:"sig_addr"`
+	Proxy      []ProxyPort   `yaml:"proxy"`
 }
 
 func LoadConfig(filename string) (*Config, error) {

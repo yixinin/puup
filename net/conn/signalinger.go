@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -35,23 +37,17 @@ type SignalingClient struct {
 	close     chan struct{}
 }
 
-func NewSignalingClient(t PeerType, serverAddr, backName string) *SignalingClient {
+func NewSignalingClient(t PeerType, sigAddr, serverName string) *SignalingClient {
 	c := &SignalingClient{
 		localType:  t,
-		sigAddr:    serverAddr,
-		serverName: backName,
+		sigAddr:    sigAddr,
+		serverName: serverName,
 		newClient:  make(chan string, 1),
 		sdps:       make(map[string]chan webrtc.SessionDescription),
 		ices:       make(map[string]chan *webrtc.ICECandidate),
 		close:      make(chan struct{}),
 	}
 	go c.loop()
-	return c
-}
-
-func (c *SignalingClient) Clone(clientId string) *SignalingClient {
-	c = NewSignalingClient(c.localType, c.sigAddr, c.serverName)
-
 	return c
 }
 
@@ -93,11 +89,14 @@ func (c *SignalingClient) GetIceChan(id string) chan *webrtc.ICECandidate {
 	return ch
 }
 
-func (c *SignalingClient) OnSdp(id string, sdp webrtc.SessionDescription) {
+func (c *SignalingClient) OnSdp(id string, sdp *webrtc.SessionDescription) {
+	if sdp == nil {
+		return
+	}
 	if c.localType == Answer {
 		c.newClient <- id
 	}
-	c.RemoteSdp(id) <- sdp
+	c.RemoteSdp(id) <- *sdp
 }
 func (c *SignalingClient) OnCandidate(id string, ice *webrtc.ICECandidate) {
 	c.GetIceChan(id) <- ice
@@ -123,14 +122,19 @@ func (c *SignalingClient) Fetch(url string) error {
 		return stderr.Wrap(err)
 
 	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logrus.Errorf("read keepalive resp error:%v", err)
+		return stderr.Wrap(err)
+	}
 	var ack proto.FetchAck
-	err = json.NewDecoder(resp.Body).Decode(&ack)
+	err = json.Unmarshal(data, &ack)
 	if err != nil {
 		logrus.Errorf("decode keepalive resp error:%v", err)
 		return stderr.Wrap(err)
 	}
 
-	if ack.Sdp.SDP != "" {
+	if ack.Sdp != nil {
 		c.OnSdp(ack.Id, ack.Sdp)
 	}
 	for _, ice := range ack.Candidates {
@@ -140,11 +144,13 @@ func (c *SignalingClient) Fetch(url string) error {
 }
 
 func (c *SignalingClient) loop() {
+	tk := time.NewTicker(2 * time.Second)
+	defer tk.Stop()
 	for {
 		select {
 		case <-c.close:
 			return
-		default:
+		case <-tk.C:
 			err := c.FetchOffer()
 			if err != nil {
 				logrus.Errorf("fetch error:%v", err)
