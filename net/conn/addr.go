@@ -80,13 +80,13 @@ func (a *ClientAddr) Network() string {
 }
 
 func (a *ClientAddr) String() string {
-	return fmt.Sprintf("%s.%d", a.ClientId, a.Label.String())
+	return fmt.Sprintf("%s.%s", a.ClientId, a.Label.String())
 }
 
 func parseLabel(label string) (*Label, error) {
 	addrs := strings.Split(label, ":")
 	if len(addrs) != 2 {
-		return nil, stderr.New("invalid label")
+		return nil, stderr.New("invalid label: " + label)
 	}
 	idx, err := strconv.Atoi(addrs[1])
 	if err != nil {

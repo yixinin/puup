@@ -161,12 +161,6 @@ func (p *Peer) Connect(ctx context.Context) error {
 
 	switch p.Type {
 	case webrtc.SDPTypeOffer:
-		dc, err := p.pc.CreateDataChannel("data", nil)
-		if err != nil {
-			return err
-		}
-		p.handleChannel(dc)
-
 		if err := p.SendOffer(ctx); err != nil {
 			return err
 		}
