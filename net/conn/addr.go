@@ -2,42 +2,70 @@ package conn
 
 import (
 	"fmt"
+
+	"github.com/pion/webrtc/v3"
 )
 
 type ChannelType string
 
 const (
-	Data      ChannelType = "data"
 	Keepalive ChannelType = "keepalive"
 	Cmd       ChannelType = "command"
+	Web       ChannelType = "web"
+	Proxy     ChannelType = "proxy"
+	Ssh       ChannelType = "ssh"
+	File      ChannelType = "file"
 )
 
 func (t ChannelType) String() string {
 	switch t {
-	case Data, Cmd, Keepalive:
+	case Cmd, Keepalive, Web, Proxy, Ssh, File:
 		return string(t)
 	}
 	return "unknown"
 }
 
-type PeerAddr struct {
-	Type   PeerType
-	Name   string
-	PeerId int
+type Label struct {
+	t   webrtc.SDPType
+	ct  ChannelType
+	idx uint64
 }
 
-func NewPeerAddr(name string, pid int, pt PeerType) *PeerAddr {
-	return &PeerAddr{
-		Name:   name,
-		PeerId: pid,
-		Type:   pt,
+func NewLabel(t webrtc.SDPType, ct ChannelType, idx uint64) *Label {
+	return &Label{
+		t:   t,
+		ct:  ct,
+		idx: idx,
+	}
+}
+func (l *Label) String() string {
+	return fmt.Sprintf("%s.%s:%d", l.t, l.ct, l.idx)
+}
+
+type OfferAddr struct {
+	Label      *Label
+	ServerName string
+}
+
+func NewOfferAddr(serverName string, label *Label) *OfferAddr {
+	return &OfferAddr{
+		Label:      label,
+		ServerName: serverName,
 	}
 }
 
-func (a *PeerAddr) Network() string {
+func (a *OfferAddr) Network() string {
 	return "webrtc"
 }
 
-func (a *PeerAddr) String() string {
-	return fmt.Sprintf("%s.%s:%d", a.Type, a.Name, a.PeerId)
+func (a *OfferAddr) String() string {
+	return fmt.Sprintf("%s.%d", a.ServerName, a.Label.String())
+}
+
+func NewAnswerAddr(serverName, label string) *PeerAddr {
+	return &PeerAddr{}
+}
+
+func parseLabel() {
+
 }

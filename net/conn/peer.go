@@ -15,32 +15,6 @@ import (
 	"github.com/yixinin/puup/stderr"
 )
 
-type DcStatus string
-
-const (
-	Opening DcStatus = "opening"
-	Idle    DcStatus = "idle"
-	Active  DcStatus = "active"
-	Closed  DcStatus = "closed"
-)
-
-type PeerType string
-
-const (
-	Offer  PeerType = "offer"
-	Answer PeerType = "answer"
-)
-
-func (p PeerType) SdpTYpe() webrtc.SDPType {
-	switch p {
-	case Offer:
-		return webrtc.SDPTypeOffer
-	case Answer:
-		return webrtc.SDPTypeAnswer
-	}
-	panic("unexpect peer type")
-}
-
 type Command string
 
 const (
@@ -56,6 +30,7 @@ type DataChannelCommand struct {
 
 type ReadWriterReleaser interface {
 	io.ReadWriter
+	Label() string
 	Release()
 	LocalAddr() net.Addr
 	RemoteAddr() net.Addr
@@ -71,8 +46,7 @@ type Peer struct {
 	sigCli Signalinger
 	pc     *webrtc.PeerConnection
 
-	status DcStatus
-	data   *webrtc.DataChannel
+	channels map[string]*Channel
 
 	recvData chan []byte
 	accept   chan ReadWriterReleaser
@@ -171,7 +145,7 @@ func (p *Peer) loopKeepalive(ctx context.Context, dc *webrtc.DataChannel) error 
 	}
 }
 
-func (p *Peer) setStatus(status DcStatus) bool {
+func (p *Peer) setStatus(status ChanStatus) bool {
 	p.Lock()
 	defer p.Unlock()
 	if status == p.status {

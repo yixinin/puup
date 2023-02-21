@@ -2,16 +2,24 @@ package backend
 
 import (
 	"context"
+	"net"
 	"sync"
 
 	// This is required to use H264 video encoder
 	_ "github.com/pion/mediadevices/pkg/driver/camera" // This is required to register camera adapter
 	"github.com/yixinin/puup/config"
+	pnet "github.com/yixinin/puup/net"
 	"github.com/yixinin/puup/net/conn"
 )
 
+type Server interface {
+	ServeConn(ctx context.Context, conn net.Conn) error
+	Match(ctx context.Context, addr net.Addr) bool
+}
+
 type Backend struct {
 	web   *WebServer
+	lis   *pnet.Listener
 	ssh   *SshServer
 	file  *FileServer
 	proxy *Proxy

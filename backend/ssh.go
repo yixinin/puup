@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/config"
 	pnet "github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
 	"golang.org/x/crypto/ssh"
 )
@@ -36,14 +37,18 @@ func (c *SshServer) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		err = c.handle(conn)
+		err = c.ServeConn(ctx, conn)
 		if err != nil {
 			return err
 		}
 	}
 }
 
-func (c *SshServer) handle(conn net.Conn) error {
+func (c *SshServer) Match(addr *conn.PeerAddr) {
+
+}
+
+func (c *SshServer) ServeConn(ctx context.Context, conn net.Conn) error {
 	defer func() {
 		conn.(*pnet.Conn).Release()
 	}()

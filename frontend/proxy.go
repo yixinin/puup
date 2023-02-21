@@ -65,9 +65,9 @@ func (p *Proxy) runForward(localPort, remotePort uint16) error {
 		if err != nil {
 			return stderr.Wrap(err)
 		}
-		logrus.Debugf("proxy %s, on port: %d, write header", rconn.RemoteAddr(), remotePort)
 		var header = make([]byte, 2)
 		binary.BigEndian.PutUint16(header, remotePort)
+		logrus.Debugf("proxy %s, on port: %d, write header:%v", rconn.RemoteAddr(), remotePort, header)
 		_, err = rconn.Write(header)
 		if err != nil {
 			return err

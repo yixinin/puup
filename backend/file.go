@@ -35,14 +35,14 @@ func (s *FileServer) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		err = s.handle(conn)
+		err = s.ServeConn(ctx, conn)
 		if err != nil {
 			return err
 		}
 	}
 }
 
-func (s *FileServer) handle(rconn net.Conn) error {
+func (s *FileServer) ServeConn(ctx context.Context, rconn net.Conn) error {
 	defer func() {
 		rconn.(*pnet.Conn).Release()
 	}()
