@@ -63,7 +63,7 @@ func (c *PeersClient) Connect(sigAddr, serverName string) (*conn.Peer, error) {
 	if err != nil {
 		return nil, stderr.Wrap(err)
 	}
-	sigCli := conn.NewSignalingClient(conn.Offer, sigAddr, serverName)
+	sigCli := conn.NewSignalingClient(webrtc.SDPTypeOffer, sigAddr, serverName)
 	peer, err := conn.NewOfferPeer(pc, serverName, sigCli)
 	if err != nil {
 		return nil, err
@@ -75,19 +75,20 @@ func (c *PeersClient) Connect(sigAddr, serverName string) (*conn.Peer, error) {
 	return peer, nil
 }
 
-func (c *PeersClient) Dial(sigAddr, serverName string) (net.Conn, error) {
+func (c *PeersClient) Dial(sigAddr, serverName string, ct conn.ChannelType) (net.Conn, error) {
 	p, ok := c.getRandPeer(serverName)
-	if ok {
-		c, err := p.GetConn()
+	if !ok {
+		var err error
+		p, err = c.Connect(sigAddr, serverName)
 		if err != nil {
 			return nil, err
 		}
-		conn := NewConn(c)
-		return conn, nil
 	}
-	p, err := c.Connect(sigAddr, serverName)
+
+	cc, err := p.Get(ct)
 	if err != nil {
 		return nil, err
 	}
-	return NewConn(p), nil
+	conn := NewConn(cc)
+	return conn, nil
 }

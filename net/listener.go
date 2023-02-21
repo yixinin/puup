@@ -18,8 +18,13 @@ type Listener struct {
 	sigClient  *conn.SignalingClient
 
 	onClose chan string
-	onConn  chan conn.ReadWriterReleaser
-	peers   map[string]*conn.Peer
+	accept  chan conn.ReadWriterReleaser
+
+	acceptWeb   chan conn.ReadWriterReleaser
+	acceptSsh   chan conn.ReadWriterReleaser
+	acceptFile  chan conn.ReadWriterReleaser
+	acceptProxy chan conn.ReadWriterReleaser
+	peers       map[string]*conn.Peer
 
 	isClose bool
 	close   chan struct{}
@@ -27,12 +32,16 @@ type Listener struct {
 
 func NewListener(sigAddr, serverName string) *Listener {
 	lis := &Listener{
-		sigClient:  conn.NewSignalingClient(conn.Answer, sigAddr, serverName),
-		serverName: serverName,
-		onClose:    make(chan string, 1),
-		onConn:     make(chan conn.ReadWriterReleaser, 10),
-		peers:      make(map[string]*conn.Peer, 1),
-		close:      make(chan struct{}, 1),
+		sigClient:   conn.NewSignalingClient(webrtc.SDPTypeAnswer, sigAddr, serverName),
+		serverName:  serverName,
+		onClose:     make(chan string, 1),
+		accept:      make(chan conn.ReadWriterReleaser, 100),
+		acceptWeb:   make(chan conn.ReadWriterReleaser, 40),
+		acceptSsh:   make(chan conn.ReadWriterReleaser, 10),
+		acceptFile:  make(chan conn.ReadWriterReleaser, 10),
+		acceptProxy: make(chan conn.ReadWriterReleaser, 40),
+		peers:       make(map[string]*conn.Peer, 1),
+		close:       make(chan struct{}, 1),
 	}
 	go lis.loop()
 	return lis
@@ -43,8 +52,40 @@ func (l *Listener) Accept() (net.Conn, error) {
 		select {
 		case <-l.close:
 			return nil, net.ErrClosed
-		case rwr := <-l.onConn:
-
+		case rwr := <-l.acceptWeb:
+			conn := NewConn(rwr)
+			return conn, nil
+		}
+	}
+}
+func (l *Listener) AcceptFile() (net.Conn, error) {
+	for {
+		select {
+		case <-l.close:
+			return nil, net.ErrClosed
+		case rwr := <-l.acceptFile:
+			conn := NewConn(rwr)
+			return conn, nil
+		}
+	}
+}
+func (l *Listener) AcceptSsh() (net.Conn, error) {
+	for {
+		select {
+		case <-l.close:
+			return nil, net.ErrClosed
+		case rwr := <-l.acceptSsh:
+			conn := NewConn(rwr)
+			return conn, nil
+		}
+	}
+}
+func (l *Listener) AcceptProxy() (net.Conn, error) {
+	for {
+		select {
+		case <-l.close:
+			return nil, net.ErrClosed
+		case rwr := <-l.acceptProxy:
 			conn := NewConn(rwr)
 			return conn, nil
 		}
@@ -98,6 +139,17 @@ FOR:
 		select {
 		case <-l.close:
 			return
+		case dc := <-l.accept:
+			switch dc.Label().ChannelType {
+			case conn.Web:
+				l.acceptWeb <- dc
+			case conn.Ssh:
+				l.acceptSsh <- dc
+			case conn.File:
+				l.acceptFile <- dc
+			case conn.Proxy:
+				l.acceptProxy <- dc
+			}
 		case clientId := <-l.sigClient.NewClient():
 			if _, ok := l.GetPeer(clientId); ok {
 				continue FOR
@@ -108,7 +160,7 @@ FOR:
 				continue
 			}
 
-			p := conn.NewAnswerPeer(pc, l.serverName, clientId, l.sigClient, l.onConn)
+			p := conn.NewAnswerPeer(pc, l.serverName, clientId, l.sigClient, l.accept)
 			l.AddPeer(clientId, p)
 			go func() {
 				if err := p.Connect(context.TODO()); err != nil {

@@ -26,7 +26,7 @@ type Signalinger interface {
 
 type SignalingClient struct {
 	sync.RWMutex
-	localType PeerType
+	localType webrtc.SDPType
 
 	sigAddr    string
 	serverName string
@@ -37,7 +37,7 @@ type SignalingClient struct {
 	close     chan struct{}
 }
 
-func NewSignalingClient(t PeerType, sigAddr, serverName string) *SignalingClient {
+func NewSignalingClient(t webrtc.SDPType, sigAddr, serverName string) *SignalingClient {
 	c := &SignalingClient{
 		localType:  t,
 		sigAddr:    sigAddr,
@@ -93,7 +93,7 @@ func (c *SignalingClient) OnSdp(id string, sdp *webrtc.SessionDescription) {
 	if sdp == nil {
 		return
 	}
-	if c.localType == Answer {
+	if c.localType == webrtc.SDPTypeAnswer {
 		c.newClient <- id
 	}
 	c.RemoteSdp(id) <- *sdp
@@ -150,7 +150,7 @@ func (c *SignalingClient) loop() {
 		case <-c.close:
 			return
 		case <-tk.C:
-			err := c.FetchSdp(c.localType.SdpTYpe())
+			err := c.FetchSdp(c.localType)
 			if err != nil {
 				logrus.Errorf("fetch error:%v", err)
 			}

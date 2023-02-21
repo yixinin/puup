@@ -13,25 +13,29 @@ import (
 type ChannelPool struct {
 	sync.RWMutex
 
-	Type  webrtc.SDPType
-	CType ChannelType
-	chs   map[string]*Channel
-	pc    *webrtc.PeerConnection
+	serverName, clientId string
 
-	accept chan ReadWriterReleaser
-	idx    uint64
+	Type webrtc.SDPType
+	chs  map[string]ReadWriterReleaser
+	pc   *webrtc.PeerConnection
+
+	accept  chan ReadWriterReleaser
+	release chan ReadWriterReleaser
+
+	idx uint64
 
 	close chan struct{}
 }
 
-func NewChannelPool(pc *webrtc.PeerConnection, t webrtc.SDPType, ctype ChannelType) *ChannelPool {
+func NewChannelPool(serverName, clientId string, pc *webrtc.PeerConnection, t webrtc.SDPType) *ChannelPool {
 	pool := &ChannelPool{
-		Type:   t,
-		CType:  ctype,
-		chs:    make(map[string]*Channel, 8),
-		pc:     pc,
-		accept: make(chan ReadWriterReleaser),
+		Type:       t,
+		serverName: serverName,
+		clientId:   clientId,
+		chs:        make(map[string]ReadWriterReleaser, 8),
+		pc:         pc,
 	}
+	go pool.loop(context.TODO())
 	return pool
 }
 
@@ -40,45 +44,58 @@ func (p *ChannelPool) loop(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case dc := <-p.release:
+			p.Lock()
+			p.chs[dc.Label().String()] = dc
+			p.Unlock()
 		}
 	}
 }
 
-func (p *ChannelPool) GetChannel(labels ...string) (*Channel, error) {
+func (p *ChannelPool) Get(ct ChannelType, labels ...string) (ReadWriterReleaser, error) {
+	p.RLock()
+	defer p.RUnlock()
 	switch len(labels) {
 	case 1:
-		p.RLock()
-		defer p.RUnlock()
 		ch, _ := p.chs[labels[0]]
 		if ch == nil {
 			return nil, stderr.New("not found")
 		}
 		return ch, nil
 	case 0:
-		p.Lock()
-		defer p.Unlock()
 	default:
-		p.RLock()
-		defer p.RUnlock()
+
 		for _, v := range p.chs {
 			return v, nil
 		}
 	}
 	atomic.AddUint64(&p.idx, 1)
-	label := NewLabel(p.Type, p.CType, p.idx) // offer.web:1
+	label := NewLabel(ct, p.idx) // offer.web:1
 	dc, err := p.pc.CreateDataChannel(label.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-	ch := NewOfferChannel(dc, label)
-	p.chs[label.String()] = ch
+	ch := NewOfferChannel(p.serverName, p.clientId, dc, label, p.release)
 	return ch, nil
 }
 
-func (p *ChannelPool) OnChannel(dc *webrtc.DataChannel) {
+func (p *ChannelPool) OnChannelOpen(dc *webrtc.DataChannel) error {
 	p.Lock()
 	defer p.Unlock()
-	p.chs[dc.Label()] = NewAnswerChannel(dc, p.accept)
+	label, err := parseLabel(dc.Label())
+	if err != nil {
+		return err
+	}
+	p.chs[dc.Label()] = NewAnswerChannel(p.serverName, p.clientId, dc, label, p.accept)
+	return nil
+}
+func (p *ChannelPool) OnRelease(label string) {
+	p.Lock()
+	defer p.Unlock()
+	ch, ok := p.chs[label]
+	if ok && ch != nil {
+		ch.Release()
+	}
 }
 
 func (p *ChannelPool) Accept() (ReadWriterReleaser, error) {

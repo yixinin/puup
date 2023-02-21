@@ -4,12 +4,13 @@ import (
 	"context"
 	"sync"
 
+	"github.com/pion/webrtc/v3"
 	"github.com/yixinin/puup/config"
 	"github.com/yixinin/puup/net/conn"
 )
 
 type FrontEnd struct {
-	proxy *Proxy
+	proxy *ProxyClient
 	file  *FileClient
 }
 
@@ -20,7 +21,7 @@ func NewFrontEnd(filename string) (*FrontEnd, error) {
 	}
 	f := &FrontEnd{}
 
-	proxy, err := NewProxy(cfg, conn.Offer)
+	proxy, err := NewProxy(cfg, webrtc.SDPTypeOffer)
 	if err != nil {
 		return nil, err
 	}

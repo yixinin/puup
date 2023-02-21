@@ -3,20 +3,18 @@ package backend
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/config"
 	pnet "github.com/yixinin/puup/net"
-	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
 	"golang.org/x/crypto/ssh"
 )
 
 type SshServer struct {
-	lis net.Listener
+	lis *pnet.Listener
 }
 
 type SshHeader struct {
@@ -25,15 +23,15 @@ type SshHeader struct {
 	Key  []byte `json:"key,omitempty"`
 }
 
-func NewSshServer(cfg *config.Config) *SshServer {
+func NewSshServer(cfg *config.Config, lis *pnet.Listener) *SshServer {
 	return &SshServer{
-		lis: pnet.NewListener(cfg.SigAddr, fmt.Sprintf("%s.ssh", cfg.ServerName)),
+		lis: lis,
 	}
 }
 
 func (c *SshServer) Run(ctx context.Context) error {
 	for {
-		conn, err := c.lis.Accept()
+		conn, err := c.lis.AcceptSsh()
 		if err != nil {
 			return err
 		}
@@ -42,10 +40,6 @@ func (c *SshServer) Run(ctx context.Context) error {
 			return err
 		}
 	}
-}
-
-func (c *SshServer) Match(addr *conn.PeerAddr) {
-
 }
 
 func (c *SshServer) ServeConn(ctx context.Context, conn net.Conn) error {

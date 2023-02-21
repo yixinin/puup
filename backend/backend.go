@@ -2,7 +2,6 @@ package backend
 
 import (
 	"context"
-	"net"
 	"sync"
 
 	// This is required to use H264 video encoder
@@ -12,18 +11,11 @@ import (
 	"github.com/yixinin/puup/net/conn"
 )
 
-type Server interface {
-	ServeConn(ctx context.Context, conn net.Conn) error
-	Match(ctx context.Context, addr net.Addr) bool
-}
-
 type Backend struct {
 	web   *WebServer
-	lis   *pnet.Listener
 	ssh   *SshServer
 	file  *FileServer
-	proxy *Proxy
-
+	proxy *ProxyServer
 	close chan struct{}
 }
 
@@ -34,16 +26,11 @@ func NewBackend(filename string) (*Backend, error) {
 	}
 	b := &Backend{}
 
-	proxy, err := NewProxy(cfg, conn.Answer)
-	if err != nil {
-		return nil, err
-	}
-	b.proxy = proxy
-
-	b.web = NewWebServer(cfg)
-	b.file = NewFileServer(cfg)
-	b.ssh = NewSshServer(cfg)
-
+	lis := pnet.NewListener(cfg.SigAddr, cfg.ServerName)
+	b.proxy = NewProxy(cfg, lis)
+	b.web = NewWebServer(cfg, lis)
+	b.file = NewFileServer(cfg, lis)
+	b.ssh = NewSshServer(cfg, lis)
 	return b, nil
 }
 

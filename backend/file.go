@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -15,11 +14,10 @@ import (
 )
 
 type FileServer struct {
-	lis net.Listener
+	lis *pnet.Listener
 }
 
-func NewFileServer(cfg *config.Config) *FileServer {
-	lis := pnet.NewListener(cfg.SigAddr, fmt.Sprintf("%s.file", cfg.ServerName))
+func NewFileServer(cfg *config.Config, lis *pnet.Listener) *FileServer {
 	return &FileServer{lis: lis}
 }
 
@@ -31,7 +29,7 @@ type FileHeader struct {
 
 func (s *FileServer) Run(ctx context.Context) error {
 	for {
-		conn, err := s.lis.Accept()
+		conn, err := s.lis.AcceptFile()
 		if err != nil {
 			return err
 		}

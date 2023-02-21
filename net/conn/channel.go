@@ -27,27 +27,25 @@ type Channel struct {
 	close chan struct{}
 
 	accept   chan ReadWriterReleaser
+	release  chan ReadWriterReleaser
 	recvData chan []byte
 }
 
-func NewOfferChannel(sname, cid string, dc *webrtc.DataChannel, label *Label) *Channel {
+func NewOfferChannel(sname, cid string, dc *webrtc.DataChannel, label *Label, release chan ReadWriterReleaser) *Channel {
 	ch := newChannel(dc, webrtc.SDPTypeOffer)
 	ch.label = label
 	ch.laddr = NewClientAddr(cid, label)
 	ch.raddr = NewServerAddr(sname, label)
+	ch.release = release
 	return ch
 }
 
-func NewAnswerChannel(sname, cid string, dc *webrtc.DataChannel, accept chan ReadWriterReleaser) (*Channel, error) {
+func NewAnswerChannel(sname, cid string, dc *webrtc.DataChannel, label *Label, accept chan ReadWriterReleaser) *Channel {
 	ch := newChannel(dc, webrtc.SDPTypeAnswer)
 	ch.accept = accept
-	label, err := parseLabel(dc.Label())
-	if err != nil {
-		return nil, err
-	}
 	ch.raddr = NewClientAddr(cid, label)
 	ch.laddr = NewServerAddr(sname, label)
-	return ch, nil
+	return ch
 }
 
 func newChannel(dc *webrtc.DataChannel, typ webrtc.SDPType) *Channel {
@@ -85,7 +83,7 @@ func (c *Channel) OnMessage(msg webrtc.DataChannelMessage) {
 	case <-c.close:
 		return
 	case <-c.open:
-		if c.Active() {
+		if c.TakeConn() {
 			if c.Type == webrtc.SDPTypeAnswer && c.accept != nil {
 				c.accept <- c
 			}
@@ -94,7 +92,7 @@ func (c *Channel) OnMessage(msg webrtc.DataChannelMessage) {
 	}
 }
 
-func (c *Channel) Active() bool {
+func (c *Channel) TakeConn() bool {
 	if c.status != Idle {
 		return false
 	}
@@ -106,6 +104,7 @@ func (c *Channel) Release() {
 		return
 	}
 	c.status = Idle
+	c.release <- c
 }
 
 func (c *Channel) Close() error {
@@ -116,11 +115,11 @@ func (c *Channel) Close() error {
 	default:
 	}
 	close(c.close)
-	return nil
+	return c.dc.Close()
 }
 
-func (c *Channel) Label() string {
-	return c.dc.Label()
+func (c *Channel) Label() *Label {
+	return c.label
 }
 func (p *Channel) LocalAddr() net.Addr {
 	return p.laddr

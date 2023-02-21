@@ -13,29 +13,27 @@ import (
 	"github.com/yixinin/puup/stderr"
 )
 
-type Proxy struct {
-	localAddr  string
-	sigAddr    string
-	serverName string
-	ports      map[uint16]struct{}
+type ProxyServer struct {
+	lis       *pnet.Listener
+	localAddr string
+	ports     map[uint16]struct{}
 }
 
-func NewProxy(cfg *config.Config, pt conn.PeerType) (*Proxy, error) {
+func NewProxy(cfg *config.Config, lis *pnet.Listener) *ProxyServer {
 	var ports = make(map[uint16]struct{})
 	for _, v := range cfg.ProxyBack.Ports {
 		ports[v] = struct{}{}
 	}
 
-	return &Proxy{
-		sigAddr:    cfg.SigAddr,
-		serverName: fmt.Sprintf("%s.proxy", cfg.ServerName),
-		ports:      ports,
-	}, nil
+	return &ProxyServer{
+		lis:       lis,
+		localAddr: cfg.ProxyBack.Addr,
+		ports:     ports,
+	}
 }
-func (p *Proxy) Run(ctx context.Context) error {
-	lis := pnet.NewListener(p.sigAddr, p.serverName)
+func (p *ProxyServer) Run(ctx context.Context) error {
 	for {
-		rconn, err := lis.Accept()
+		rconn, err := p.lis.AcceptProxy()
 		if err != nil {
 			return stderr.Wrap(err)
 		}
@@ -49,7 +47,7 @@ type ProxyHeader struct {
 	Port uint16 `json:"port"`
 }
 
-func (p *Proxy) ServeConn(ctx context.Context, rconn net.Conn) error {
+func (p *ProxyServer) ServeConn(ctx context.Context, rconn net.Conn) error {
 	logrus.Debugf("proxy from %s, read port", rconn.RemoteAddr())
 	var header = make([]byte, 2)
 	n, err := rconn.Read(header)

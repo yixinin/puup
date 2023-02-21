@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/config"
 	pnet "github.com/yixinin/puup/net"
@@ -14,30 +15,30 @@ import (
 	"github.com/yixinin/puup/stderr"
 )
 
-type Proxy struct {
-	Type       conn.PeerType
+type ProxyClient struct {
+	Type       webrtc.SDPType
 	sigAddr    string
 	serverName string
 	ports      map[uint16]uint16
 }
 
-func NewProxy(cfg *config.Config, pt conn.PeerType) (*Proxy, error) {
+func NewProxy(cfg *config.Config, pt webrtc.SDPType) (*ProxyClient, error) {
 	var ports = make(map[uint16]uint16)
 	for _, v := range cfg.ProxyFront {
 		ports[v.Local] = v.Remote
 	}
-	return &Proxy{
+	return &ProxyClient{
 		Type:       pt,
 		sigAddr:    cfg.SigAddr,
-		serverName: fmt.Sprintf("%s.proxy", cfg.ServerName),
+		serverName: cfg.ServerName,
 		ports:      ports,
 	}, nil
 }
-func (p *Proxy) Run(ctx context.Context) error {
+func (p *ProxyClient) Run(ctx context.Context) error {
 	return p.runForwards()
 }
 
-func (p *Proxy) runForwards() error {
+func (p *ProxyClient) runForwards() error {
 	var wg sync.WaitGroup
 	for local, remote := range p.ports {
 		wg.Add(1)
@@ -51,7 +52,7 @@ func (p *Proxy) runForwards() error {
 	wg.Wait()
 	return nil
 }
-func (p *Proxy) runForward(localPort, remotePort uint16) error {
+func (p *ProxyClient) runForward(localPort, remotePort uint16) error {
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
 		return stderr.Wrap(err)
@@ -61,7 +62,7 @@ func (p *Proxy) runForward(localPort, remotePort uint16) error {
 		if err != nil {
 			return stderr.Wrap(err)
 		}
-		rconn, err := pnet.Dial(p.sigAddr, p.serverName)
+		rconn, err := pnet.Dial(p.sigAddr, p.serverName, conn.Proxy)
 		if err != nil {
 			return stderr.Wrap(err)
 		}

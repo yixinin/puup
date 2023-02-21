@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 
-	"github.com/yixinin/puup/net/conn"
 	"gopkg.in/yaml.v2"
 )
 
@@ -17,11 +16,11 @@ type ProxyBack struct {
 }
 
 type Config struct {
-	Type       conn.PeerType `yaml:"type"`
-	ServerName string        `yaml:"server_name"`
-	SigAddr    string        `yaml:"sig_addr"`
-	ProxyBack  *ProxyBack    `yaml:"proxy_back"`
-	ProxyFront []ProxyPort   `yaml:"proxy_front"`
+	Type       string      `yaml:"type"`
+	ServerName string      `yaml:"server_name"`
+	SigAddr    string      `yaml:"sig_addr"`
+	ProxyBack  *ProxyBack  `yaml:"proxy_back"`
+	ProxyFront []ProxyPort `yaml:"proxy_front"`
 }
 
 func LoadConfig(filename string) (*Config, error) {

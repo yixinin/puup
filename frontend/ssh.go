@@ -13,6 +13,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
 	"golang.org/x/term"
 )
@@ -33,7 +34,7 @@ func NewSshClient() *SshClient {
 }
 
 func (c *SshClient) Run(user, name, pass string) error {
-	conn, err := net.Dial(c.sigAddr, c.serverName)
+	conn, err := net.Dial(c.sigAddr, c.serverName, conn.Ssh)
 	if err != nil {
 		return err
 	}

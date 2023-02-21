@@ -3,7 +3,6 @@ package frontend
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/config"
 	pnet "github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/net/conn"
 )
 
 type CopyFile struct {
@@ -28,7 +28,7 @@ type FileClient struct {
 
 func NewFileClient(cfg *config.Config) *FileClient {
 	return &FileClient{
-		serverName: fmt.Sprintf("%s.file", cfg.ServerName),
+		serverName: cfg.ServerName,
 		sigAddr:    cfg.SigAddr,
 		ch:         make(chan CopyFile, 1),
 	}
@@ -52,7 +52,7 @@ func (c *FileClient) Run(ctx context.Context) error {
 }
 
 func (c *FileClient) handle(file CopyFile) error {
-	conn, err := pnet.Dial(c.sigAddr, c.serverName)
+	conn, err := pnet.Dial(c.sigAddr, c.serverName, conn.File)
 	if err != nil {
 		return err
 	}

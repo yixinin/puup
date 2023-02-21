@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pion/webrtc/v3"
 	"github.com/yixinin/puup/stderr"
 )
 
@@ -29,20 +28,18 @@ func (t ChannelType) String() string {
 }
 
 type Label struct {
-	t   webrtc.SDPType
-	ct  ChannelType
-	idx uint64
+	ChannelType ChannelType
+	Index       uint64
 }
 
-func NewLabel(t webrtc.SDPType, ct ChannelType, idx uint64) *Label {
+func NewLabel(ct ChannelType, idx uint64) *Label {
 	return &Label{
-		t:   t,
-		ct:  ct,
-		idx: idx,
+		ChannelType: ct,
+		Index:       idx,
 	}
 }
 func (l *Label) String() string {
-	return fmt.Sprintf("%s.%s:%d", l.t, l.ct, l.idx)
+	return fmt.Sprintf("%s:%d", l.ChannelType, l.Index)
 }
 
 type ServerAddr struct {
@@ -87,11 +84,7 @@ func (a *ClientAddr) String() string {
 }
 
 func parseLabel(label string) (*Label, error) {
-	addrs := strings.Split(label, ".")
-	if len(addrs) != 2 {
-		return nil, stderr.New("invalid label")
-	}
-	addrs = strings.Split(addrs[1], ":")
+	addrs := strings.Split(label, ":")
 	if len(addrs) != 2 {
 		return nil, stderr.New("invalid label")
 	}
@@ -100,8 +93,7 @@ func parseLabel(label string) (*Label, error) {
 		return nil, stderr.Wrap(err)
 	}
 	return &Label{
-		t:   webrtc.SDPTypeOffer,
-		ct:  ChannelType(addrs[0]),
-		idx: uint64(idx),
+		ChannelType: ChannelType(addrs[0]),
+		Index:       uint64(idx),
 	}, nil
 }

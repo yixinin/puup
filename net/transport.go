@@ -6,26 +6,27 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/yixinin/puup/net/conn"
 	"github.com/yixinin/puup/stderr"
 )
 
 type Transport struct {
-	client   *PeersClient
-	sigAddr  string
-	backName string
+	client     *PeersClient
+	sigAddr    string
+	serverName string
 }
 
 func NewTransport(sigAddr, name string) (http.RoundTripper, error) {
 	var wt = &Transport{
-		sigAddr:  sigAddr,
-		backName: name,
+		sigAddr:    sigAddr,
+		serverName: name,
 	}
 	wt.client = NewPeersClient()
 	return wt, nil
 }
 
 func (t *Transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
-	c, err := t.client.Dial(t.sigAddr, t.backName)
+	c, err := t.client.Dial(t.sigAddr, t.serverName, conn.Web)
 	if err != nil {
 		return nil, err
 	}
