@@ -30,17 +30,24 @@ type Channel struct {
 	recvData chan []byte
 }
 
-func NewOfferChannel(dc *webrtc.DataChannel, label *Label) *Channel {
+func NewOfferChannel(sname, cid string, dc *webrtc.DataChannel, label *Label) *Channel {
 	ch := newChannel(dc, webrtc.SDPTypeOffer)
 	ch.label = label
-	ch.laddr = NewOfferAddr(label)
+	ch.laddr = NewClientAddr(cid, label)
+	ch.raddr = NewServerAddr(sname, label)
 	return ch
 }
 
-func NewAnswerChannel(dc *webrtc.DataChannel, accept chan ReadWriterReleaser) *Channel {
+func NewAnswerChannel(sname, cid string, dc *webrtc.DataChannel, accept chan ReadWriterReleaser) (*Channel, error) {
 	ch := newChannel(dc, webrtc.SDPTypeAnswer)
 	ch.accept = accept
-	return ch
+	label, err := parseLabel(dc.Label())
+	if err != nil {
+		return nil, err
+	}
+	ch.raddr = NewClientAddr(cid, label)
+	ch.laddr = NewServerAddr(sname, label)
+	return ch, nil
 }
 
 func newChannel(dc *webrtc.DataChannel, typ webrtc.SDPType) *Channel {
