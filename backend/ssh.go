@@ -61,7 +61,7 @@ func (c *SshServer) handle(conn net.Conn) error {
 
 	err = ConnectSsh(req, conn)
 	if err != nil {
-		logrus.Error("ssh connection failed:%v", err)
+		logrus.Errorf("ssh connection failed:%v", err)
 	}
 	logrus.Debugf("ssh session end")
 	return nil

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"net"
 
 	"github.com/sirupsen/logrus"
@@ -72,24 +71,7 @@ func (p *Proxy) runBackward(ports map[uint16]struct{}) error {
 			defer func() {
 				rconn.(*pnet.Conn).Release()
 			}()
-			return Copy(lconn, rconn)
+			return conn.GoCopy(lconn, rconn)
 		})
 	}
-}
-func Copy(src, dst net.Conn) error {
-	defer func() {
-		src.Close()
-		dst.Close()
-	}()
-
-	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
-		_, err := io.Copy(dst, src)
-		return stderr.Wrap(err)
-	})
-	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
-		_, err := io.Copy(src, dst)
-		return stderr.Wrap(err)
-	})
-
-	return nil
 }

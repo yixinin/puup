@@ -4,7 +4,7 @@ sig_addr: "http://114.115.218.1:8080"
 proxy_front:
   - local: 3489
     remote: 3389
-proxy_back:
-  addr: "172.24.150.188"
-  ports:
-    - 3389
+# proxy_back:
+#   addr: "10.0.0.167"
+#   ports:
+#     - 3389
