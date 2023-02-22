@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net"
 	"runtime/debug"
 
 	"github.com/sirupsen/logrus"
@@ -24,7 +23,7 @@ func GoFunc(ctx context.Context, f func(ctx context.Context) error) {
 	}()
 }
 
-func GoCopy(src, dst net.Conn) error {
+func GoCopy(src, dst io.ReadWriteCloser) error {
 	defer func() {
 		src.Close()
 		dst.Close()

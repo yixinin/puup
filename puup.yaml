@@ -2,8 +2,8 @@ type: offer
 server_name: "v1"
 sig_addr: "http://114.115.218.1:8080"
 proxy_front:
-  - local: 3489
-    remote: 3389
+  - local: 5901
+    remote: 5900
 # proxy_back:
 #   addr: "10.0.0.167"
 #   ports:

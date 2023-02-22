@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -57,6 +58,7 @@ func NewServer() *Server {
 func (s *Server) Run(ctx context.Context) error {
 	e := gin.New()
 	e.Use(gin.Recovery())
+	e.StaticFS("/web", http.Dir("dist"))
 	e.Use(middles.Cors)
 	g := e.Group("/api", middles.Logging())
 
@@ -64,6 +66,8 @@ func (s *Server) Run(ctx context.Context) error {
 	g.POST("/candidate", s.PostCandidate)
 	g.GET("/fetch", s.Fetch)
 	g.HEAD("/offline", s.Offline)
+
+	e.Use(middles.Cors)
 
 	return e.Run(":8080")
 }

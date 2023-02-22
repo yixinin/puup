@@ -105,7 +105,6 @@ func (c *Channel) OnMessage(msg webrtc.DataChannelMessage) {
 
 func (c *Channel) TakeConn() bool {
 	if c.status != Idle {
-		logrus.Debugf("channel %s take fail, %s", c.Label().String(), c.status)
 		return false
 	}
 	logrus.Debugf("channel %s taken", c.Label().String())

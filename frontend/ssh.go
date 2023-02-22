@@ -6,10 +6,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"strings"
-	"sync"
 
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/net"
@@ -25,16 +23,17 @@ type SshHeader struct {
 }
 
 type SshClient struct {
-	sigAddr    string
-	serverName string
+	sigAddr string
 }
 
-func NewSshClient() *SshClient {
-	return &SshClient{}
+func NewSshClient(sigAddr string) *SshClient {
+	return &SshClient{
+		sigAddr: sigAddr,
+	}
 }
 
 func (c *SshClient) Run(user, name, pass string) error {
-	conn, err := net.Dial(c.sigAddr, c.serverName, conn.Ssh)
+	rconn, err := net.Dial(c.sigAddr, name, conn.Ssh)
 	if err != nil {
 		return err
 	}
@@ -54,47 +53,11 @@ func (c *SshClient) Run(user, name, pass string) error {
 		return err
 	}
 	logrus.Debugf("login with:%s", data)
-	_, err = conn.Write(data)
+	_, err = rconn.Write(data)
 	if err != nil {
 		return err
 	}
 
-	var read = func() error {
-		_, err := io.Copy(os.Stdout, conn)
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	var wirte = func() error {
-		_, err := io.Copy(conn, os.Stdin)
-		if err == io.EOF {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		err := read()
-		if err != nil {
-			logrus.Errorf("read error:%v", err)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		err := wirte()
-		if err != nil {
-			logrus.Errorf("write error:%v", err)
-		}
-	}()
 	fileDescriptor := int(os.Stdin.Fd())
 	if term.IsTerminal(fileDescriptor) {
 		originalState, err := term.MakeRaw(fileDescriptor)
@@ -103,13 +66,12 @@ func (c *SshClient) Run(user, name, pass string) error {
 		}
 		defer term.Restore(fileDescriptor, originalState)
 	}
-	wg.Wait()
-	return nil
+
+	return conn.GoCopy(os.Stdin, rconn)
 }
 
 func GetArgsUserPass() (user, name, pass string, err error) {
 	ss := flag.Args()
-	fmt.Println(ss)
 	var sss = make([]string, 0, len(ss))
 	for _, v := range ss {
 		v = strings.TrimSpace(v)
