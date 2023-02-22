@@ -47,6 +47,7 @@ func (s *WebServer) Run(ctx context.Context) error {
 			"id":  req.Id,
 		})
 	})
+	e.StaticFS("/share", http.Dir("share"))
 	// e.StaticFS("/share", http.Dir(shareDir))
 	e.NoRoute(func(c *gin.Context) {
 		c.JSON(200, gin.H{"msg": "are you lost?"})
