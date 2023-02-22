@@ -3,13 +3,10 @@ package net
 import (
 	"bufio"
 	"context"
-	"errors"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/pion/webrtc/v3"
-	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/net/conn"
 )
 
@@ -22,18 +19,13 @@ type Conn struct {
 	close     chan struct{}
 	buffer    *bufio.Reader
 	rdl       time.Time
-	sendPool  chan []byte
 }
 
 func NewConn(rwr conn.ReadWriterReleaser) *Conn {
 	c := &Conn{
 		ReadWriterReleaser: rwr,
 		close:              make(chan struct{}),
-		sendPool:           make(chan []byte),
 	}
-	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
-		return c.loopSend(ctx)
-	})
 	c.buffer = bufio.NewReader(rwr)
 	return c
 }
@@ -130,28 +122,8 @@ func (c *Conn) Write(data []byte) (int, error) {
 	select {
 	case <-c.close:
 		return 0, net.ErrClosed
-	case c.sendPool <- data:
-		return len(data), nil
-	}
-}
-func (c *Conn) loopSend(ctx context.Context) error {
-	defer c.Close()
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-c.close:
-			return nil
-		case data := <-c.sendPool:
-			_, err := c.ReadWriterReleaser.Write(data)
-			if err != nil {
-				logrus.Errorf("send channel data failed, session will be closed! error:%v", err)
-				return err
-			}
-			if errors.Is(err, webrtc.ErrConnectionClosed) {
-				return net.ErrClosed
-			}
-		}
+	default:
+		return c.ReadWriterReleaser.Write(data)
 	}
 }
 

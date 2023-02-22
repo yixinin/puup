@@ -59,7 +59,7 @@ func (a *ServerAddr) Network() string {
 }
 
 func (a *ServerAddr) String() string {
-	return fmt.Sprintf("%s.%d", a.ServerName, a.Label.String())
+	return fmt.Sprintf("%s.%s", a.ServerName, a.Label.String())
 }
 
 type ClientAddr struct {

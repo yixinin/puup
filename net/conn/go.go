@@ -8,7 +8,6 @@ import (
 	"runtime/debug"
 
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/stderr"
 )
 
 func GoFunc(ctx context.Context, f func(ctx context.Context) error) {
@@ -34,17 +33,23 @@ func GoCopy(src, dst net.Conn) error {
 	var ch = make(chan error, 1)
 	GoFunc(context.TODO(), func(ctx context.Context) error {
 		_, err := io.Copy(dst, src)
-		if err != nil && !errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
 			ch <- err
 		}
-		return stderr.Wrap(err)
+		return nil
 	})
 	GoFunc(context.TODO(), func(ctx context.Context) error {
 		_, err := io.Copy(src, dst)
-		if err != nil && !errors.Is(err, io.EOF) {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
 			ch <- err
 		}
-		return stderr.Wrap(err)
+		return nil
 	})
 	err := <-ch
 	return err

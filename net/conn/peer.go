@@ -27,6 +27,7 @@ type DataChannelCommand struct {
 type ReadWriterReleaser interface {
 	io.ReadWriter
 	Label() *Label
+	TakeConn() bool
 	Release()
 	LocalAddr() net.Addr
 	RemoteAddr() net.Addr

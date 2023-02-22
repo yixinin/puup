@@ -35,7 +35,7 @@ func (p *Peer) loopKeepalive(ctx context.Context, dc *webrtc.DataChannel) error 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		logrus.Debugf("%s recv keepalive %s", dc.Label(), msg.Data)
+
 	})
 	var open = make(chan struct{})
 	dc.OnOpen(func() {
@@ -64,7 +64,6 @@ func (p *Peer) loopKeepalive(ctx context.Context, dc *webrtc.DataChannel) error 
 		case <-p.close:
 			return nil
 		case <-tk.C:
-			logrus.Debugf("send keepalive to %s", dc.Label())
 			err := dc.Send([]byte{':', ':'})
 			if err != nil {
 				logrus.Errorf("send keep alive error:%v", err)
