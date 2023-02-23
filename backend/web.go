@@ -2,8 +2,11 @@ package backend
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -36,6 +39,31 @@ func (s *WebServer) Run(ctx context.Context) error {
 
 	e.GET("/hello", func(c *gin.Context) {
 		c.JSON(200, gin.H{"msg": "hello there"})
+	})
+	e.POST("/file/upload", func(c *gin.Context) {
+		fielname := c.Request.Header.Get("filename")
+		fielname = filepath.Join("share", fielname)
+		del := c.Request.Header.Get("del")
+		if _, err := os.Stat(fielname); err != os.ErrExist {
+			if del != "del" {
+				c.String(400, "file already exsit")
+				return
+			}
+			os.Remove(fielname)
+		}
+
+		f, err := os.Create(fielname)
+		if err != nil {
+			c.String(400, err.Error())
+			return
+		}
+		defer c.Request.Body.Close()
+		_, err = io.Copy(f, c.Request.Body)
+		if err != nil {
+			c.String(400, err.Error())
+			return
+		}
+		c.String(200, "")
 	})
 	e.GET("/hello/:id", func(c *gin.Context) {
 		var req struct {

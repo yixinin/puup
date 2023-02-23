@@ -33,3 +33,19 @@ async function hello_async() {
         console.error('Caught exception', err)
     }
 }
+
+async function show_img() {
+    try {
+        const response = await GoHttp("GET", "http://localhost/share/opi5.png", null)
+        const blob = await response.blob()
+        var img = document.getElementById("img1")
+        let reader = new FileReader();
+        reader.readAsDataURL(blob);  // 转换为base64
+        reader.onload = function () {
+            img.src = reader.result
+        }
+
+    } catch (err) {
+        console.error('Caught exception', err)
+    }
+}

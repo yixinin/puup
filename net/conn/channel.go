@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -63,9 +64,8 @@ func newChannel(dc *webrtc.DataChannel, typ webrtc.SDPType, release chan ReadWri
 		release:   release,
 		open:      make(chan struct{}),
 		close:     make(chan struct{}),
-		sendData:  make(chan []byte, 10),
-		recvData:  make(chan []byte, 10),
 	}
+
 	dc.OnMessage(ch.OnMessage)
 	dc.OnOpen(func() {
 		logrus.Debugf("channel %s opend", ch.Label().String())
@@ -85,9 +85,6 @@ func newChannel(dc *webrtc.DataChannel, typ webrtc.SDPType, release chan ReadWri
 			close(ch.close)
 		}
 	})
-	GoFunc(context.TODO(), func(ctx context.Context) error {
-		return ch.loopWrite(ctx)
-	})
 	return ch
 }
 
@@ -103,6 +100,7 @@ func (c *Channel) OnMessage(msg webrtc.DataChannelMessage) {
 			}
 		}
 		var size = len(msg.Data)
+		logrus.Debugf("%s recv %d data", c.dc.Label(), size)
 		for i := 0; i < len(msg.Data); i += c.batchSize {
 			c.recvData <- msg.Data[i:min(i+c.batchSize, size)]
 		}
@@ -122,6 +120,11 @@ func (c *Channel) TakeConn() bool {
 	}
 	logrus.Debugf("channel %s taken", c.Label().String())
 	c.status = Active
+	c.sendData = make(chan []byte, 10)
+	c.recvData = make(chan []byte, 10)
+	GoFunc(context.TODO(), func(ctx context.Context) error {
+		return c.loopWrite(ctx)
+	})
 	return true
 }
 func (c *Channel) Release() {
@@ -131,10 +134,20 @@ func (c *Channel) Release() {
 	}
 	c.status = Idle
 	c.release <- c
-
-	// drop buffed data
-	c.sendData = make(chan []byte, 10)
-	c.recvData = make(chan []byte, 10)
+	go func() {
+		for {
+			select {
+			case <-c.recvData:
+				time.Sleep(1 * time.Millisecond)
+			case <-c.sendData:
+				time.Sleep(1 * time.Millisecond)
+			default:
+				close(c.recvData)
+				close(c.sendData)
+				return
+			}
+		}
+	}()
 }
 
 func (c *Channel) Close() error {
@@ -163,7 +176,9 @@ func (c *Channel) Read(data []byte) (int, error) {
 	case <-c.close:
 		return 0, io.EOF
 	case b := <-c.recvData:
-		return copy(data, b), nil
+		n := copy(data, b)
+		logrus.Debugf("read %d", n)
+		return n, nil
 	}
 }
 
@@ -184,7 +199,10 @@ func (c *Channel) loopWrite(ctx context.Context) error {
 			return ctx.Err()
 		case <-c.close:
 			return nil
-		case data := <-c.sendData:
+		case data, ok := <-c.sendData:
+			if !ok {
+				return nil
+			}
 			err := c.dc.Send(data)
 			if err != nil {
 				logrus.Errorf("send data error")
