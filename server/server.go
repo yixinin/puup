@@ -60,7 +60,7 @@ func (s *Server) Run(ctx context.Context) error {
 	e.Use(gin.Recovery())
 	e.StaticFS("/web", http.Dir("dist"))
 	e.Use(middles.Cors)
-	g := e.Group("/api", middles.Logging())
+	g := e.Group("/api")
 
 	g.POST("/sdp", s.PostSdp)
 	g.POST("/candidate", s.PostCandidate)

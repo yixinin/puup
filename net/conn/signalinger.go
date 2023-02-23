@@ -25,11 +25,12 @@ type Signalinger interface {
 }
 
 type SignalingClient struct {
-	sync.RWMutex
+	sync.Mutex
 	localType webrtc.SDPType
 
 	sigAddr    string
 	serverName string
+	clientId   string
 
 	newClient chan string
 	sdps      map[string]chan webrtc.SessionDescription
@@ -102,8 +103,8 @@ func (c *SignalingClient) OnCandidate(id string, ice *webrtc.ICECandidate) {
 	c.GetIceChan(id) <- ice
 }
 
-func (c *SignalingClient) FetchSdp(tp webrtc.SDPType) error {
-	return c.Fetch(proto.GetFetchURL(c.sigAddr, tp, c.serverName, ""))
+func (c *SignalingClient) FetchSdp(tp webrtc.SDPType, id string) error {
+	return c.Fetch(proto.GetFetchURL(c.sigAddr, tp, c.serverName, id))
 }
 
 func (c *SignalingClient) Fetch(url string) error {
@@ -143,14 +144,14 @@ func (c *SignalingClient) Fetch(url string) error {
 }
 
 func (c *SignalingClient) loop() {
-	tk := time.NewTicker(2 * time.Second)
+	tk := time.NewTicker(200 * time.Millisecond)
 	defer tk.Stop()
 	for {
 		select {
 		case <-c.close:
 			return
 		case <-tk.C:
-			err := c.FetchSdp(c.localType)
+			err := c.FetchSdp(c.localType, c.clientId)
 			if err != nil {
 				logrus.Errorf("fetch error:%v", err)
 			}
@@ -173,6 +174,7 @@ func (c *SignalingClient) SendCandidate(ctx context.Context, id string, tp webrt
 }
 
 func (c *SignalingClient) SendSdp(ctx context.Context, id string, sdp webrtc.SessionDescription) error {
+
 	data, err := json.Marshal(proto.PostSdpReq{
 		Name: c.serverName,
 		Id:   id,
@@ -182,10 +184,15 @@ func (c *SignalingClient) SendSdp(ctx context.Context, id string, sdp webrtc.Ses
 		return stderr.Wrap(err)
 	}
 	_, err = http.DefaultClient.Post(proto.GetPostSdpURL(c.sigAddr), "application/json", bytes.NewBuffer(data))
-	return stderr.Wrap(err)
+	if err != nil {
+		return stderr.Wrap(err)
+	}
+	c.clientId = id
+	return nil
 }
 
 func (c *SignalingClient) Offline(ctx context.Context, clientId string) error {
+	c.clientId = ""
 	url := proto.GetOfflineURL(c.sigAddr, c.serverName, clientId)
 	_, err := http.Head(url)
 	return err

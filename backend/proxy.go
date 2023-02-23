@@ -57,6 +57,7 @@ func (p *ProxyServer) ServeConn(ctx context.Context, rconn net.Conn) error {
 	if n != 2 {
 		return stderr.New("proxy header error")
 	}
+	logrus.Debugf("read header: %v", header)
 	port := binary.BigEndian.Uint16(header)
 	if port == 0 {
 		return stderr.New("proxy port error")

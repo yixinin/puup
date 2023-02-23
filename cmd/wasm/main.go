@@ -32,18 +32,21 @@ func main() {
 	fmt.Println("init wasm ...")
 	fmt.Println("============================================")
 
+	serverName := js.Global().Get("serverName").String()
+	fmt.Println("connect to server", serverName)
 	js.Global().Set("base64", encodeWrapper())
 	js.Global().Set("GoHttp", GoHttp())
 	js.Global().Set("GoHttpAsync", GoHttpAsync())
-	tp, err := net.NewTransport("http://114.115.218.1:8080", "pi")
+	tp, err := net.NewTransport("http://114.115.218.1:8080", serverName)
 	if err != nil {
 		fmt.Printf("init webrtc wasm error:%v\n", err)
 		return
 	}
+
 	fmt.Println("init wasm sucess.")
 	hc = &http.Client{
 		Transport: tp,
-		Timeout:   30 * time.Second,
+		Timeout:   120 * time.Second,
 	}
 	<-make(chan bool)
 }

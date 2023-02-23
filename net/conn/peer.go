@@ -144,6 +144,7 @@ func (p *Peer) Connect(ctx context.Context) error {
 		if c == nil {
 			return
 		}
+		logrus.Debugf("send ice")
 		err := p.sigCli.SendCandidate(ctx, p.clientId, p.Type, c)
 		if err != nil {
 			logrus.Errorf("send candidate error:%v", err)

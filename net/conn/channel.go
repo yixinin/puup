@@ -2,6 +2,7 @@ package conn
 
 import (
 	"context"
+	"io"
 	"net"
 
 	"github.com/pion/webrtc/v3"
@@ -31,6 +32,8 @@ type Channel struct {
 	accept  chan ReadWriterReleaser
 	release chan ReadWriterReleaser
 
+	batchSize int
+
 	recvData chan []byte
 	sendData chan []byte
 }
@@ -52,15 +55,16 @@ func NewAnswerChannel(sname, cid string, dc *webrtc.DataChannel, label *Label, a
 
 func newChannel(dc *webrtc.DataChannel, typ webrtc.SDPType, release chan ReadWriterReleaser, label *Label) *Channel {
 	ch := &Channel{
-		status:   Idle,
-		Type:     typ,
-		dc:       dc,
-		label:    label,
-		release:  release,
-		open:     make(chan struct{}),
-		close:    make(chan struct{}),
-		recvData: make(chan []byte, 100),
-		sendData: make(chan []byte, 100),
+		batchSize: 512,
+		status:    Idle,
+		Type:      typ,
+		dc:        dc,
+		label:     label,
+		release:   release,
+		open:      make(chan struct{}),
+		close:     make(chan struct{}),
+		sendData:  make(chan []byte, 10),
+		recvData:  make(chan []byte, 10),
 	}
 	dc.OnMessage(ch.OnMessage)
 	dc.OnOpen(func() {
@@ -98,9 +102,18 @@ func (c *Channel) OnMessage(msg webrtc.DataChannelMessage) {
 				c.accept <- c
 			}
 		}
-		logrus.Debugf("channel %s recv data %d", c.Label().String(), len(msg.Data))
-		c.recvData <- msg.Data
+		var size = len(msg.Data)
+		for i := 0; i < len(msg.Data); i += c.batchSize {
+			c.recvData <- msg.Data[i:min(i+c.batchSize, size)]
+		}
 	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (c *Channel) TakeConn() bool {
@@ -118,17 +131,10 @@ func (c *Channel) Release() {
 	}
 	c.status = Idle
 	c.release <- c
-	for {
-		// drop buffed data
-		select {
-		case data := <-c.recvData:
-			logrus.Debugf("%s drop recv data %d", c.dc.Label(), len(data))
-		case data := <-c.sendData:
-			logrus.Debugf("%s drop send data %d", c.dc.Label(), len(data))
-		default:
-			return
-		}
-	}
+
+	// drop buffed data
+	c.sendData = make(chan []byte, 10)
+	c.recvData = make(chan []byte, 10)
 }
 
 func (c *Channel) Close() error {
@@ -155,13 +161,9 @@ func (c *Channel) RemoteAddr() net.Addr {
 func (c *Channel) Read(data []byte) (int, error) {
 	select {
 	case <-c.close:
-		return 0, net.ErrClosed
-	case buf := <-c.recvData:
-		if len(data) < len(buf) {
-			panic("read out of memeroy")
-		}
-		n := copy(data, buf)
-		return int(n), nil
+		return 0, io.EOF
+	case b := <-c.recvData:
+		return copy(data, b), nil
 	}
 }
 

@@ -151,7 +151,9 @@ FOR:
 				l.acceptProxy <- dc
 			}
 		case clientId := <-l.sigClient.NewClient():
+			logrus.Debugf("recv new client: %s", clientId)
 			if _, ok := l.GetPeer(clientId); ok {
+				logrus.Debugf("client %s already connected", clientId)
 				continue FOR
 			}
 			pc, err := webrtc.NewPeerConnection(ice.Config)
@@ -171,7 +173,6 @@ FOR:
 			}()
 		case key := <-l.onClose:
 			l.DelPeer(key)
-			l.sigClient.Offline(context.Background(), key)
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/pion/webrtc/v3"
+	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/stderr"
 )
 
@@ -16,7 +17,7 @@ func (p *Peer) SendOffer(ctx context.Context) error {
 	if err := p.pc.SetLocalDescription(offer); err != nil {
 		return stderr.Wrap(err)
 	}
-
+	logrus.Debugf("send %s sdp", offer.Type)
 	if err := p.sigCli.SendSdp(ctx, p.clientId, offer); err != nil {
 		return stderr.Wrap(err)
 	}
@@ -28,6 +29,7 @@ func (p *Peer) SendAnswer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	logrus.Debugf("send %s sdp", answer.Type)
 	if err := p.pc.SetLocalDescription(answer); err != nil {
 		return stderr.Wrap(err)
 	}
@@ -38,6 +40,7 @@ func (p *Peer) SendAnswer(ctx context.Context) error {
 }
 
 func (p *Peer) WaitAnswer(ctx context.Context) error {
+	defer p.sigCli.Offline(context.Background(), p.clientId)
 	var answetTick = time.NewTicker(2 * time.Second)
 	defer answetTick.Stop()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -49,6 +52,7 @@ func (p *Peer) WaitAnswer(ctx context.Context) error {
 		case <-p.connected:
 			return nil
 		case sdp := <-p.sigCli.RemoteSdp(p.clientId):
+			logrus.Debugf("recv %s sdp, %s < %s", sdp.Type, p.pc.ConnectionState(), webrtc.PeerConnectionStateConnected)
 			if p.pc.ConnectionState() < webrtc.PeerConnectionStateConnected {
 				err := p.pc.SetRemoteDescription(sdp)
 				if err != nil {
@@ -56,6 +60,7 @@ func (p *Peer) WaitAnswer(ctx context.Context) error {
 				}
 			}
 		case ice := <-p.sigCli.RemoteIceCandidates(p.clientId):
+			logrus.Debugf("recv ice, %s < %s", p.pc.ICEConnectionState(), webrtc.ICEConnectionStateConnected)
 			if p.pc.ICEConnectionState() < webrtc.ICEConnectionStateConnected {
 				err := p.pc.AddICECandidate(ice.ToJSON())
 				if err != nil {
@@ -66,6 +71,7 @@ func (p *Peer) WaitAnswer(ctx context.Context) error {
 	}
 }
 func (p *Peer) PollOffer(ctx context.Context) error {
+	defer p.sigCli.Offline(context.Background(), p.clientId)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for {
@@ -75,6 +81,7 @@ func (p *Peer) PollOffer(ctx context.Context) error {
 		case <-p.connected:
 			return nil
 		case sdp := <-p.sigCli.RemoteSdp(p.clientId):
+			logrus.Debugf("recv %s sdp, %s < %s", sdp.Type, p.pc.ConnectionState(), webrtc.PeerConnectionStateConnected)
 			if p.pc.ConnectionState() < webrtc.PeerConnectionStateConnected {
 				err := p.pc.SetRemoteDescription(sdp)
 				if err != nil {
@@ -85,6 +92,7 @@ func (p *Peer) PollOffer(ctx context.Context) error {
 				}
 			}
 		case ice := <-p.sigCli.RemoteIceCandidates(p.clientId):
+			logrus.Debugf("recv ice, %s < %s", p.pc.ICEConnectionState(), webrtc.ICEConnectionStateConnected)
 			if p.pc.ICEConnectionState() < webrtc.ICEConnectionStateConnected {
 				err := p.pc.AddICECandidate(ice.ToJSON())
 				if err != nil {

@@ -48,6 +48,7 @@ func fetchSession(typ webrtc.SDPType, sess *Session, ack *proto.FetchAck) {
 		for {
 			select {
 			case sdp := <-sess.answer:
+				logrus.Debugf("fetch %s sdp", sdp.Type)
 				ack.Sdp = &sdp
 			case ice := <-sess.answerIce:
 				ack.Candidates = append(ack.Candidates, ice)
@@ -60,6 +61,7 @@ func fetchSession(typ webrtc.SDPType, sess *Session, ack *proto.FetchAck) {
 		for {
 			select {
 			case sdp := <-sess.offer:
+				logrus.Debugf("fetch %s sdp", sdp.Type)
 				ack.Sdp = &sdp
 			case ice := <-sess.offerIce:
 				ack.Candidates = append(ack.Candidates, ice)

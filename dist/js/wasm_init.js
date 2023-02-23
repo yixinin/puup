@@ -4,7 +4,10 @@ const WASM_URL = 'wasm/httpclient.wasm';
 
 var wasm;
 
+var serverName = ""
+
 function init() {
+  serverName = document.getElementById('serverName').value;
   const go = new Go();
   if ('instantiateStreaming' in WebAssembly) {
     WebAssembly.instantiateStreaming(fetch(WASM_URL), go.importObject).then(function (obj) {
@@ -22,5 +25,3 @@ function init() {
     )
   }
 }
-
-init();

@@ -16,12 +16,17 @@ type Transport struct {
 	serverName string
 }
 
-func NewTransport(sigAddr, name string) (http.RoundTripper, error) {
+func NewTransport(sigAddr, name string) (*Transport, error) {
 	var wt = &Transport{
 		sigAddr:    sigAddr,
 		serverName: name,
 	}
 	wt.client = NewPeersClient()
+
+	_, err := wt.client.Connect(sigAddr, name)
+	if err != nil {
+		return nil, err
+	}
 	return wt, nil
 }
 

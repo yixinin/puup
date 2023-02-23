@@ -5,9 +5,9 @@ go build -o puup.exe ./cmd
 go build -o ssh.exe ./cmd/ssh
 
 $env:GOOS="linux"
-$env:GOARCH="amd64"
-go build -o bin/arm64/linux/puup ./cmd
-go build -o bin/arm64/linux/ssh ./cmd/ssh
+$env:GOARCH=""
+go build -o bin/amd64/linux/puup ./cmd
+go build -o bin/amd64/linux/ssh ./cmd/ssh
 
 $env:GOOS="linux"
 $env:GOARCH="arm"
