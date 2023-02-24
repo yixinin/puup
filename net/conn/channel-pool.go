@@ -15,9 +15,10 @@ type ChannelPool struct {
 
 	serverName, clientId string
 
-	Type webrtc.SDPType
-	chs  map[string]ReadWriterReleaser
-	pc   *webrtc.PeerConnection
+	Type    webrtc.SDPType
+	idles   map[string]ReadWriterReleaser
+	actives map[string]ReadWriterReleaser
+	pc      *webrtc.PeerConnection
 
 	accept  chan ReadWriterReleaser
 	release chan ReadWriterReleaser
@@ -32,7 +33,8 @@ func NewChannelPool(serverName, clientId string, pc *webrtc.PeerConnection, t we
 		Type:       t,
 		serverName: serverName,
 		clientId:   clientId,
-		chs:        make(map[string]ReadWriterReleaser, 8),
+		idles:      make(map[string]ReadWriterReleaser, 8),
+		actives:    make(map[string]ReadWriterReleaser, 8),
 		pc:         pc,
 		release:    make(chan ReadWriterReleaser, 1),
 		close:      make(chan struct{}),
@@ -49,38 +51,47 @@ func (p *ChannelPool) loop(ctx context.Context) error {
 		case dc := <-p.release:
 			logrus.Debug(dc.Label(), "released")
 			p.Lock()
-			p.chs[dc.Label().String()] = dc
+			delete(p.actives, dc.Label().String())
+			p.idles[dc.Label().String()] = dc
 			p.Unlock()
 		}
 	}
 }
 
-func (p *ChannelPool) Get(ct ChannelType, labels ...string) (ReadWriterReleaser, error) {
+func (p *ChannelPool) Get(ct ChannelType, labels ...string) (ch ReadWriterReleaser, err error) {
 	p.RLock()
 	defer p.RUnlock()
 	var key string
-	defer delete(p.chs, key)
-	var ch ReadWriterReleaser
+	defer func() {
+		if err == nil {
+			delete(p.idles, key)
+			p.actives[ch.Label().String()] = ch
+		}
+	}()
 	switch len(labels) {
 	case 1:
 		key = labels[0]
-		if ch = p.chs[key]; ch == nil {
+		if ch = p.idles[key]; ch == nil {
 			return nil, stderr.New("not found")
 		}
 		if ch.TakeConn() {
 			return ch, nil
 		}
 	default:
-		for key, ch = range p.chs {
+		for key, ch = range p.idles {
 			if ch.TakeConn() {
 				return ch, nil
 			}
 		}
 	}
 	for i := 0; i < 5; i++ {
-		atomic.AddUint64(&p.idx, 1)
-		var label = NewLabel(ct, p.idx)
-		dc, err := p.pc.CreateDataChannel(label.String(), nil)
+		idx := atomic.AddUint64(&p.idx, 1)
+		var label = NewLabel(ct, idx)
+		b := true
+		var init = &webrtc.DataChannelInit{
+			Ordered: &b,
+		}
+		dc, err := p.pc.CreateDataChannel(label.String(), init)
 		if err != nil {
 			return nil, err
 		}
@@ -100,13 +111,19 @@ func (p *ChannelPool) OnChannelOpen(dc *webrtc.DataChannel) error {
 	if err != nil {
 		return err
 	}
-	p.chs[dc.Label()] = NewAnswerChannel(p.serverName, p.clientId, dc, label, p.accept, p.release)
+	if _, ok := p.actives[dc.Label()]; ok {
+		return nil
+	}
+	if _, ok := p.idles[dc.Label()]; !ok {
+		p.idles[dc.Label()] = NewAnswerChannel(p.serverName, p.clientId, dc, label, p.accept, p.release)
+	}
+
 	return nil
 }
 func (p *ChannelPool) OnRelease(label string) {
 	p.Lock()
 	defer p.Unlock()
-	ch, ok := p.chs[label]
+	ch, ok := p.actives[label]
 	if ok && ch != nil {
 		ch.Release()
 	}

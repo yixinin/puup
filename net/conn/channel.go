@@ -1,10 +1,10 @@
 package conn
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net"
-	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -18,6 +18,40 @@ const (
 	Active  ChanStatus = "active"
 	Closed  ChanStatus = "closed"
 )
+
+type ChannelReader struct {
+	batchSize int
+	recvData  chan []byte
+}
+
+func (c *ChannelReader) Release() {
+	close(c.recvData)
+}
+
+func NewChannelReader(batchSize int) *ChannelReader {
+	return &ChannelReader{
+		batchSize: batchSize,
+		recvData:  make(chan []byte, 10),
+	}
+}
+
+func (r *ChannelReader) OnData(data []byte) {
+	var size = len(data)
+	for i := 0; i < size; i += r.batchSize {
+		r.recvData <- data[i:min(i+r.batchSize, size)]
+	}
+}
+
+func (r *ChannelReader) Read(p []byte) (int, error) {
+	data, ok := <-r.recvData
+	if !ok {
+		return 0, io.EOF
+	}
+	if len(data) > len(p) {
+		panic("read out of memeroy!")
+	}
+	return copy(p, data), nil
+}
 
 type Channel struct {
 	status ChanStatus
@@ -35,7 +69,8 @@ type Channel struct {
 
 	batchSize int
 
-	recvData chan []byte
+	rd       *ChannelReader
+	buffer   *bufio.Reader
 	sendData chan []byte
 }
 
@@ -56,7 +91,7 @@ func NewAnswerChannel(sname, cid string, dc *webrtc.DataChannel, label *Label, a
 
 func newChannel(dc *webrtc.DataChannel, typ webrtc.SDPType, release chan ReadWriterReleaser, label *Label) *Channel {
 	ch := &Channel{
-		batchSize: 512,
+		batchSize: 4096,
 		status:    Idle,
 		Type:      typ,
 		dc:        dc,
@@ -65,7 +100,7 @@ func newChannel(dc *webrtc.DataChannel, typ webrtc.SDPType, release chan ReadWri
 		open:      make(chan struct{}),
 		close:     make(chan struct{}),
 	}
-
+	logrus.Debugf("register %s on message", ch.dc.Label())
 	dc.OnMessage(ch.OnMessage)
 	dc.OnOpen(func() {
 		logrus.Debugf("channel %s opend", ch.Label().String())
@@ -99,11 +134,8 @@ func (c *Channel) OnMessage(msg webrtc.DataChannelMessage) {
 				c.accept <- c
 			}
 		}
-		var size = len(msg.Data)
-		logrus.Debugf("%s recv %d data", c.dc.Label(), size)
-		for i := 0; i < len(msg.Data); i += c.batchSize {
-			c.recvData <- msg.Data[i:min(i+c.batchSize, size)]
-		}
+		c.rd.OnData(msg.Data)
+		logrus.Debugf("%s recv data %d", c.dc.Label(), len(msg.Data))
 	}
 }
 
@@ -121,33 +153,23 @@ func (c *Channel) TakeConn() bool {
 	logrus.Debugf("channel %s taken", c.Label().String())
 	c.status = Active
 	c.sendData = make(chan []byte, 10)
-	c.recvData = make(chan []byte, 10)
+	var rd = NewChannelReader(c.batchSize)
+	c.rd = rd
+	c.buffer = bufio.NewReader(rd)
 	GoFunc(context.TODO(), func(ctx context.Context) error {
 		return c.loopWrite(ctx)
 	})
 	return true
 }
 func (c *Channel) Release() {
-	logrus.Debugf("%s %s release call", c.dc.Label(), c.status)
+	logrus.Debugf("start to release %s conn %s ", c.dc.Label(), c.status)
 	if c.status != Active {
 		return
 	}
 	c.status = Idle
 	c.release <- c
-	go func() {
-		for {
-			select {
-			case <-c.recvData:
-				time.Sleep(1 * time.Millisecond)
-			case <-c.sendData:
-				time.Sleep(1 * time.Millisecond)
-			default:
-				close(c.recvData)
-				close(c.sendData)
-				return
-			}
-		}
-	}()
+	close(c.sendData)
+	c.rd.Release()
 }
 
 func (c *Channel) Close() error {
@@ -174,40 +196,48 @@ func (c *Channel) RemoteAddr() net.Addr {
 func (c *Channel) Read(data []byte) (int, error) {
 	select {
 	case <-c.close:
+		if c.buffer.Buffered() > 0 {
+			return c.buffer.Read(data)
+		}
 		return 0, io.EOF
-	case b := <-c.recvData:
-		n := copy(data, b)
-		logrus.Debugf("read %d", n)
-		return n, nil
+	default:
+		return c.buffer.Read(data)
 	}
 }
 
 func (c *Channel) Write(data []byte) (int, error) {
-	select {
-	case <-c.close:
-		return 0, net.ErrClosed
-	case c.sendData <- data:
-		return len(data), nil
+	var size = len(data)
+	for i := 0; i < size; i += c.batchSize {
+		select {
+		case <-c.close:
+			return 0, net.ErrClosed
+		case c.sendData <- data[i:min(i+c.batchSize, size)]:
+		}
 	}
+	return len(data), nil
 }
 
 func (c *Channel) loopWrite(ctx context.Context) error {
+	var total = 0
+	defer func() {
+		logrus.Infof("%s send loop end, total send: %d", c.dc.Label(), total)
+	}()
 	<-c.open
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-c.close:
-			return nil
 		case data, ok := <-c.sendData:
 			if !ok {
 				return nil
 			}
+			logrus.Debugf("%s send data %d", c.dc.Label(), len(data))
+			total += len(data)
 			err := c.dc.Send(data)
 			if err != nil {
 				logrus.Errorf("send data error")
 			}
-			logrus.Debugf("%s send data %d", c.dc.Label(), len(data))
 		}
 	}
 }

@@ -4,6 +4,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto/md5"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -36,6 +38,7 @@ func main() {
 	fmt.Println("connect to server", serverName)
 	js.Global().Set("base64", encodeWrapper())
 	js.Global().Set("GoHttp", GoHttp())
+	js.Global().Set("GoHttp1", GoHttp1())
 	js.Global().Set("GoHttpAsync", GoHttpAsync())
 	tp, err := net.NewTransport("http://114.115.218.1:8080", serverName)
 	if err != nil {
@@ -114,6 +117,72 @@ func GoHttp() js.Func {
 					reject.Invoke(errorObject)
 					return
 				}
+
+				m := md5.New()
+				io.Copy(m, bytes.NewReader(data))
+				fmt.Printf("webrtc md5:%x len:%d", m.Sum(nil), len(data))
+
+				arrayConstructor := js.Global().Get("Uint8Array")
+				dataJS := arrayConstructor.New(len(data))
+				js.CopyBytesToJS(dataJS, data)
+
+				responseConstructor := js.Global().Get("Response")
+				response := responseConstructor.New(dataJS)
+
+				resolve.Invoke(response)
+			}()
+			return nil
+		})
+		promiseConstructor := js.Global().Get("Promise")
+		return promiseConstructor.New(handler)
+	})
+}
+
+// http [Method,url,params]
+func GoHttp1() js.Func {
+	return js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		method := args[0].String()
+		url := args[1].String()
+		var data string
+		if len(args) > 2 && !args[2].IsNull() {
+			data = args[2].String()
+		}
+		handler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+			resolve := args[0]
+			reject := args[1]
+			go func() {
+				var body io.Reader
+				if data != "" {
+					body = strings.NewReader(data)
+				}
+				req, err := http.NewRequest(method, url, body)
+				if err != nil {
+					errorConstructor := js.Global().Get("Error")
+					errorObject := errorConstructor.New(err.Error())
+					reject.Invoke(errorObject)
+					return
+				}
+
+				res, err := http.DefaultClient.Do(req)
+				if err != nil {
+					errorConstructor := js.Global().Get("Error")
+					errorObject := errorConstructor.New(err.Error())
+					reject.Invoke(errorObject)
+					return
+				}
+				defer res.Body.Close()
+
+				data, err := ioutil.ReadAll(res.Body)
+				if err != nil {
+					errorConstructor := js.Global().Get("Error")
+					errorObject := errorConstructor.New(err.Error())
+					reject.Invoke(errorObject)
+					return
+				}
+
+				m := md5.New()
+				io.Copy(m, bytes.NewReader(data))
+				fmt.Printf("http md5:%x len:%d", m.Sum(nil), len(data))
 
 				arrayConstructor := js.Global().Get("Uint8Array")
 				dataJS := arrayConstructor.New(len(data))

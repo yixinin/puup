@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/config"
+	"github.com/yixinin/puup/middles"
 	pnet "github.com/yixinin/puup/net"
 )
 
@@ -36,7 +37,7 @@ func (s *WebServer) Run(ctx context.Context) error {
 		}
 	}
 	e := gin.Default()
-
+	e.Use(middles.Cors)
 	e.GET("/hello", func(c *gin.Context) {
 		c.JSON(200, gin.H{"msg": "hello there"})
 	})
@@ -83,6 +84,8 @@ func (s *WebServer) Run(ctx context.Context) error {
 	h.Handler = e
 
 	go h.Serve(s.lis)
+
+	go http.ListenAndServe(":8080", e)
 
 	<-ctx.Done()
 	return ctx.Err()

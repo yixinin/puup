@@ -67,7 +67,5 @@ func (s *Server) Run(ctx context.Context) error {
 	g.GET("/fetch", s.Fetch)
 	g.HEAD("/offline", s.Offline)
 
-	e.Use(middles.Cors)
-
 	return e.Run(":8080")
 }

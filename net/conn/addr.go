@@ -2,11 +2,17 @@ package conn
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yixinin/puup/stderr"
 )
+
+func init() {
+	rand.Seed(time.Now().Unix())
+}
 
 type ChannelType string
 

@@ -1,7 +1,6 @@
 package net
 
 import (
-	"bufio"
 	"context"
 	"net"
 	"sync"
@@ -17,7 +16,6 @@ type Conn struct {
 
 	isRelease bool
 	close     chan struct{}
-	buffer    *bufio.Reader
 	rdl       time.Time
 }
 
@@ -26,7 +24,6 @@ func NewConn(rwr conn.ReadWriterReleaser) *Conn {
 		ReadWriterReleaser: rwr,
 		close:              make(chan struct{}),
 	}
-	c.buffer = bufio.NewReader(rwr)
 	return c
 }
 
@@ -94,27 +91,27 @@ func (c *Conn) Read(data []byte) (n int, err error) {
 		return 0, err
 	}
 
-	if c.buffer.Buffered() >= len(data) {
-		return c.buffer.Read(data)
-	}
-
 	var ch = make(chan error)
-	select {
-	case <-c.close:
-		return 0, net.ErrClosed
-	default:
-		conn.GoFunc(context.TODO(), func(ctx context.Context) error {
-			defer close(ch)
-			n, err = c.buffer.Read(data)
-			ch <- err
-			return nil
-		})
+	defer close(ch)
+
+	conn.GoFunc(context.TODO(), func(ctx context.Context) error {
+		n, err = c.ReadWriterReleaser.Read(data)
 		select {
-		case <-tm.C:
-			return 0, context.DeadlineExceeded
-		case err = <-ch:
-			return n, err
+		case <-ch:
+		case ch <- err:
 		}
+		return err
+	})
+	select {
+	case <-tm.C:
+		select {
+		case <-c.close:
+			return 0, net.ErrClosed
+		default:
+			return 0, context.DeadlineExceeded
+		}
+	case err = <-ch:
+		return n, err
 	}
 }
 
