@@ -14,23 +14,26 @@
 
 <body>
     <div>
-        <input id="serverName" value="pi"/>
+        <input id="serverName" value="open" />
         <button onclick="init()">Connect</button>
     </div>
     <button onclick="share_list()">get share list</button>
     <br />
-   <div id="list">
+    <div id="list">
 
-   </div>
-   <div>
-    <button onclick="show_img()">show img via webrtc</button>
-    <img id="img1">
-   </div>
+    </div>
+    <div>
+        <button onclick="show_img()">show img via webrtc</button>
+        <img width=320 height=180 id="img1">
+    </div>
 
-   <div>
-    <button onclick="show_img2()">show img via http</button>
-    <img id="img2">
-   </div>
+    <div>
+        <button onclick="show_img2()">show img via http</button>
+        <img width=320 height=180 id="img2">
+    </div>
+    <div>
+        <button onclick="data()">Data</button>
+    </div>
 </body>
 
 

@@ -166,10 +166,14 @@ func (p *Peer) Connect(ctx context.Context) error {
 		if err := p.SendOffer(ctx); err != nil {
 			return err
 		}
+		p.sigCli.Start()
+		defer p.sigCli.End()
 		if err := p.WaitAnswer(ctx); err != nil {
 			return err
 		}
 	case webrtc.SDPTypeAnswer:
+		p.sigCli.Start()
+		defer p.sigCli.End()
 		return p.PollOffer(ctx)
 	}
 	return nil

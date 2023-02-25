@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/webrtc/v3"
@@ -22,11 +23,24 @@ type Signalinger interface {
 	RemoteSdp(id string) chan webrtc.SessionDescription
 	RemoteIceCandidates(id string) chan *webrtc.ICECandidate
 	Offline(ctx context.Context, clientId string) error
+	Start() int32
+	End() int32
+	Pause()
 }
+
+type SigStatus string
+
+const (
+	StatusIdle      SigStatus = "idle"
+	StatusFetch     SigStatus = "fetch"
+	StatusKeepalive SigStatus = "kl"
+)
 
 type SignalingClient struct {
 	sync.Mutex
 	localType webrtc.SDPType
+
+	num atomic.Int32
 
 	sigAddr    string
 	serverName string
@@ -50,6 +64,20 @@ func NewSignalingClient(t webrtc.SDPType, sigAddr, serverName string) *Signaling
 	}
 	go c.loop()
 	return c
+}
+
+func (c *SignalingClient) Status() int32 {
+	return c.num.Load()
+}
+
+func (c *SignalingClient) Start() int32 {
+	return c.num.Add(1)
+}
+func (c *SignalingClient) End() int32 {
+	return c.num.Add(-1)
+}
+func (c *SignalingClient) Pause() {
+	c.num.Store(-1)
 }
 
 func (c *SignalingClient) NewClient() chan string {
@@ -103,10 +131,6 @@ func (c *SignalingClient) OnCandidate(id string, ice *webrtc.ICECandidate) {
 	c.GetIceChan(id) <- ice
 }
 
-func (c *SignalingClient) FetchSdp(tp webrtc.SDPType, id string) error {
-	return c.Fetch(proto.GetFetchURL(c.sigAddr, tp, c.serverName, id))
-}
-
 func (c *SignalingClient) Fetch(url string) error {
 	resp, err := http.DefaultClient.Get(url)
 	if err != nil {
@@ -146,14 +170,27 @@ func (c *SignalingClient) Fetch(url string) error {
 func (c *SignalingClient) loop() {
 	tk := time.NewTicker(200 * time.Millisecond)
 	defer tk.Stop()
+	var i uint8
 	for {
+		i++
 		select {
 		case <-c.close:
 			return
 		case <-tk.C:
-			err := c.FetchSdp(c.localType, c.clientId)
-			if err != nil {
-				logrus.Errorf("fetch error:%v", err)
+			switch c.Status() {
+			case -1:
+			case 1:
+				err := c.Fetch(proto.GetFetchURL(c.sigAddr, c.localType, c.serverName, c.clientId))
+				if err != nil {
+					logrus.Errorf("fetch error:%v", err)
+				}
+			default:
+				if i%16 == 0 {
+					err := c.Fetch(proto.GetFetchURL(c.sigAddr, c.localType, c.serverName, c.clientId))
+					if err != nil {
+						logrus.Errorf("fetch error:%v", err)
+					}
+				}
 			}
 		}
 	}

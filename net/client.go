@@ -64,6 +64,7 @@ func (c *PeersClient) Connect(sigAddr, serverName string) (*conn.Peer, error) {
 		return nil, stderr.Wrap(err)
 	}
 	sigCli := conn.NewSignalingClient(webrtc.SDPTypeOffer, sigAddr, serverName)
+	sigCli.Pause()
 	peer, err := conn.NewOfferPeer(pc, serverName, sigCli)
 	if err != nil {
 		return nil, err

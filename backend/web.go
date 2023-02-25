@@ -33,6 +33,13 @@ func (s *WebServer) Run(ctx context.Context) error {
 				logrus.Error("conn is not *net.Conn")
 				return
 			}
+			conn.Close()
+		case http.StateIdle:
+			conn, ok := c.(*pnet.Conn)
+			if !ok {
+				logrus.Error("conn is not *net.Conn")
+				return
+			}
 			conn.Release()
 		}
 	}
@@ -77,6 +84,8 @@ func (s *WebServer) Run(ctx context.Context) error {
 		})
 	})
 	e.StaticFS("/share", http.Dir("share"))
+	e.GET("/data", SendSerisData)
+	e.GET("/opi5", Image)
 	// e.StaticFS("/share", http.Dir(shareDir))
 	e.NoRoute(func(c *gin.Context) {
 		c.JSON(200, gin.H{"msg": "are you lost?"})
@@ -85,8 +94,33 @@ func (s *WebServer) Run(ctx context.Context) error {
 
 	go h.Serve(s.lis)
 
-	go http.ListenAndServe(":8080", e)
+	go http.ListenAndServe(":8081", e)
 
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+type Resp struct {
+	Id int `json:"id"`
+}
+
+func SendSerisData(c *gin.Context) {
+	var s = make([]Resp, 0, 4096)
+	for i := 0; i < 1024*4096; i++ {
+		s = append(s, Resp{Id: i})
+	}
+
+	c.JSON(200, s)
+}
+func Image(c *gin.Context) {
+	f, err := os.Open("share/opi5.png")
+	if err != nil {
+		c.String(400, "")
+		return
+	}
+	defer f.Close()
+	w := c.Writer
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	io.Copy(c.Writer, f)
 }

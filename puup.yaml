@@ -1,5 +1,5 @@
 type: offer
-server_name: "v1"
+server_name: "open"
 sig_addr: "http://114.115.218.1:8080"
 proxy_front:
   - local: 5901

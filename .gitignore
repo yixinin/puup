@@ -8,3 +8,4 @@ deploy.ps1
 bin
 *debug*
 *.wasm
+*.txt

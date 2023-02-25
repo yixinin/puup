@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"net"
+	"os"
+	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -57,6 +59,8 @@ type Channel struct {
 	status ChanStatus
 	Type   webrtc.SDPType
 	label  *Label
+
+	rdf, wrf *os.File
 
 	laddr, raddr net.Addr
 	dc           *webrtc.DataChannel
@@ -128,6 +132,9 @@ func (c *Channel) OnMessage(msg webrtc.DataChannelMessage) {
 	case <-c.close:
 		return
 	case <-c.open:
+		if c.rdf != nil {
+			c.rdf.Write(msg.Data)
+		}
 		if c.TakeConn() {
 			if c.Type == webrtc.SDPTypeAnswer && c.accept != nil {
 				logrus.Debugf("channel %s accept", c.Label().String())
@@ -150,6 +157,18 @@ func (c *Channel) TakeConn() bool {
 	if c.status != Idle {
 		return false
 	}
+	rdname := time.Now().Format("rd-20060102150405.txt")
+	wrname := time.Now().Format("wr-20060102150405.txt")
+	rdf, err := os.Create(rdname)
+	if err != nil {
+		logrus.Errorf("create log file error:%v", err)
+	}
+	wrf, err := os.Create(wrname)
+	if err != nil {
+		logrus.Errorf("create log file error:%v", err)
+	}
+	c.rdf = rdf
+	c.wrf = wrf
 	logrus.Debugf("channel %s taken", c.Label().String())
 	c.status = Active
 	c.sendData = make(chan []byte, 10)
@@ -168,8 +187,12 @@ func (c *Channel) Release() {
 	}
 	c.status = Idle
 	c.release <- c
-	close(c.sendData)
-	c.rd.Release()
+	go func() {
+		<-time.After(time.Second)
+		c.rd.Release()
+		close(c.sendData)
+	}()
+
 }
 
 func (c *Channel) Close() error {
@@ -193,7 +216,7 @@ func (c *Channel) RemoteAddr() net.Addr {
 	return c.raddr
 }
 
-func (c *Channel) Read(data []byte) (int, error) {
+func (c *Channel) Read(data []byte) (n int, err error) {
 	select {
 	case <-c.close:
 		if c.buffer.Buffered() > 0 {
@@ -201,7 +224,11 @@ func (c *Channel) Read(data []byte) (int, error) {
 		}
 		return 0, io.EOF
 	default:
-		return c.buffer.Read(data)
+		n, err := c.buffer.Read(data)
+		if err != nil {
+			return 0, err
+		}
+		return n, err
 	}
 }
 
@@ -234,6 +261,9 @@ func (c *Channel) loopWrite(ctx context.Context) error {
 			}
 			logrus.Debugf("%s send data %d", c.dc.Label(), len(data))
 			total += len(data)
+			if c.wrf != nil {
+				c.wrf.Write(data)
+			}
 			err := c.dc.Send(data)
 			if err != nil {
 				logrus.Errorf("send data error")

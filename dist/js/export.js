@@ -52,7 +52,7 @@ async function show_img() {
 
 async function show_img2() {
     try {
-        const response = await GoHttp1("GET", "http://10.0.0.2:8080/share/opi5.png", null)
+        const response = await GoHttp1("GET", "http://localhost:8081/share/opi5.png", null)
         const blob = await response.blob()
         var img = document.getElementById("img2")
         let reader = new FileReader();
@@ -61,6 +61,16 @@ async function show_img2() {
             img.src = reader.result
         }
 
+    } catch (err) {
+        console.error('Caught exception', err)
+    }
+}
+async function data() {
+    try {
+        const response = await GoHttp("GET", "http://localhost/data", null)
+        const s = await response.text()
+        var arr = JSON.parse(s)
+        console.log(arr[arr.length-1])
     } catch (err) {
         console.error('Caught exception', err)
     }
