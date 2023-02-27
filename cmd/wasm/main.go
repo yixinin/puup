@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"syscall/js"
 	"time"
@@ -84,6 +85,11 @@ func GoHttp() js.Func {
 			resolve := args[0]
 			reject := args[1]
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logrus.WithField("stacks", string(debug.Stack())).Errorf("recovered %v", r)
+					}
+				}()
 				var body io.Reader
 				if data != "" {
 					body = strings.NewReader(data)
@@ -151,6 +157,11 @@ func GoHttp1() js.Func {
 			resolve := args[0]
 			reject := args[1]
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logrus.WithField("stacks", string(debug.Stack())).Errorf("recovered %v", r)
+					}
+				}()
 				var body io.Reader
 				if data != "" {
 					body = strings.NewReader(data)
@@ -212,6 +223,11 @@ func GoHttpAsync() js.Func {
 			resolve := args[0]
 			reject := args[1]
 			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logrus.WithField("stacks", string(debug.Stack())).Errorf("recovered %v", r)
+					}
+				}()
 				var body io.Reader
 				if data != "" {
 					body = strings.NewReader(data)
@@ -242,6 +258,11 @@ func GoHttpAsync() js.Func {
 						controller := args[0]
 
 						go func() {
+							defer func() {
+								if r := recover(); r != nil {
+									logrus.WithField("stacks", string(debug.Stack())).Errorf("recovered %v", r)
+								}
+							}()
 							defer res.Body.Close()
 							for {
 								// Read up to 16KB at a time

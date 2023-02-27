@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v3"
@@ -15,10 +16,11 @@ import (
 type ChanStatus string
 
 const (
-	Opening ChanStatus = "opening"
-	Idle    ChanStatus = "idle"
-	Active  ChanStatus = "active"
-	Closed  ChanStatus = "closed"
+	Opening  ChanStatus = "opening"
+	Idle     ChanStatus = "idle"
+	Active   ChanStatus = "active"
+	WaitIdle ChanStatus = "waitIdle"
+	Closed   ChanStatus = "closed"
 )
 
 type ChannelReader struct {
@@ -40,7 +42,8 @@ func NewChannelReader(batchSize int) *ChannelReader {
 func (r *ChannelReader) OnData(data []byte) {
 	var size = len(data)
 	for i := 0; i < size; i += r.batchSize {
-		r.recvData <- data[i:min(i+r.batchSize, size)]
+		end := min(i+r.batchSize, size)
+		r.recvData <- data[i:end]
 	}
 }
 
@@ -70,6 +73,8 @@ type Channel struct {
 
 	accept  chan ReadWriterReleaser
 	release chan ReadWriterReleaser
+
+	wg sync.WaitGroup
 
 	batchSize int
 
@@ -157,21 +162,26 @@ func (c *Channel) TakeConn() bool {
 	if c.status != Idle {
 		return false
 	}
-	rdname := time.Now().Format("rd-20060102150405.txt")
-	wrname := time.Now().Format("wr-20060102150405.txt")
-	rdf, err := os.Create(rdname)
-	if err != nil {
-		logrus.Errorf("create log file error:%v", err)
+	if os.Getenv("GOOS") != "wasm" {
+		rdname := time.Now().Format("rrtc-20060102150405.txt")
+		wrname := time.Now().Format("wrtc-20060102150405.txt")
+		rdf, err := os.Create(rdname)
+		if err != nil {
+			logrus.Errorf("create log file error:%v", err)
+		}
+		wrf, err := os.Create(wrname)
+		if err != nil {
+			logrus.Errorf("create log file error:%v", err)
+		}
+		c.rdf = rdf
+		c.wrf = wrf
 	}
-	wrf, err := os.Create(wrname)
-	if err != nil {
-		logrus.Errorf("create log file error:%v", err)
-	}
-	c.rdf = rdf
-	c.wrf = wrf
+
 	logrus.Debugf("channel %s taken", c.Label().String())
 	c.status = Active
 	c.sendData = make(chan []byte, 10)
+	c.wg = sync.WaitGroup{}
+	c.wg.Add(1)
 	var rd = NewChannelReader(c.batchSize)
 	c.rd = rd
 	c.buffer = bufio.NewReader(rd)
@@ -185,12 +195,13 @@ func (c *Channel) Release() {
 	if c.status != Active {
 		return
 	}
-	c.status = Idle
-	c.release <- c
+	c.status = WaitIdle
 	go func() {
-		<-time.After(time.Second)
+		c.wg.Wait()
 		c.rd.Release()
 		close(c.sendData)
+		c.release <- c
+		c.status = Idle
 	}()
 
 }
@@ -234,14 +245,19 @@ func (c *Channel) Read(data []byte) (n int, err error) {
 
 func (c *Channel) Write(data []byte) (int, error) {
 	var size = len(data)
+	writen := 0
 	for i := 0; i < size; i += c.batchSize {
+		writen = min(size, i+c.batchSize)
 		select {
 		case <-c.close:
 			return 0, net.ErrClosed
-		case c.sendData <- data[i:min(i+c.batchSize, size)]:
+		case c.sendData <- data[i:writen]:
 		}
 	}
-	return len(data), nil
+	if c.status == WaitIdle {
+		c.wg.Done()
+	}
+	return writen, nil
 }
 
 func (c *Channel) loopWrite(ctx context.Context) error {

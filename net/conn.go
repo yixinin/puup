@@ -2,10 +2,13 @@ package net
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/net/conn"
 )
 
@@ -13,6 +16,8 @@ type Conn struct {
 	sync.RWMutex
 
 	conn.ReadWriterReleaser
+
+	rdf, wrf *os.File
 
 	isRelease bool
 	close     chan struct{}
@@ -24,6 +29,19 @@ func NewConn(rwr conn.ReadWriterReleaser) *Conn {
 		ReadWriterReleaser: rwr,
 		close:              make(chan struct{}),
 	}
+	if os.Getenv("GOOS") != "wasm" {
+		rdf, err := os.Create(fmt.Sprintf("riface_%s.txt", time.Now().Format("20060102150405")))
+		if err != nil {
+			logrus.Errorf("create file error:%v", err)
+		}
+		wrf, err := os.Create(fmt.Sprintf("wiface_%s.txt", time.Now().Format("20060102150405")))
+		if err != nil {
+			logrus.Errorf("create file error:%v", err)
+		}
+		c.rdf = rdf
+		c.wrf = wrf
+	}
+
 	return c
 }
 
@@ -86,6 +104,11 @@ func (d *DataInfo) Unwrap() (int, error) {
 }
 
 func (c *Conn) Read(data []byte) (n int, err error) {
+	defer func() {
+		if err == nil && n > 0 && c.rdf != nil {
+			c.rdf.Write(data[:n])
+		}
+	}()
 	tm, err := c.getRdl()
 	if err != nil {
 		return 0, err
@@ -115,13 +138,19 @@ func (c *Conn) Read(data []byte) (n int, err error) {
 	}
 }
 
-func (c *Conn) Write(data []byte) (int, error) {
+func (c *Conn) Write(data []byte) (n int, err error) {
+	defer func() {
+		if err == nil && n > 0 && c.wrf != nil {
+			c.wrf.Write(data[:n])
+		}
+	}()
 	select {
 	case <-c.close:
 		return 0, net.ErrClosed
 	default:
-		return c.ReadWriterReleaser.Write(data)
+		n, err = c.ReadWriterReleaser.Write(data)
 	}
+	return
 }
 
 func (c *Conn) Release() {

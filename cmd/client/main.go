@@ -7,10 +7,12 @@ import (
 	"os"
 
 	"github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/stderr"
 )
 
 func main() {
-	Check()
+
+	Download()
 }
 
 func Download() {
@@ -22,7 +24,7 @@ func Download() {
 
 	tp, err := net.NewTransport("http://114.115.218.1:8080", "open")
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(stderr.Wrap(err))
 		return
 	}
 	hc := http.Client{
@@ -31,7 +33,7 @@ func Download() {
 
 	resp, err := hc.Do(req)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(stderr.Wrap(err))
 		return
 	}
 	defer resp.Body.Close()
@@ -41,14 +43,14 @@ var file1 = `C:\Users\eason\Pictures\opi5.png`
 var file2 = `C:\Users\eason\Pictures\http1.png`
 
 func Check() {
-	file1 = "rd.txt"
+	file1 = "srv_wiface.txt"
 	f1, err := os.Open(file1)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	defer f1.Close()
-	file2 = "wr.txt"
+	file2 = "srv_wrtc.txt"
 	f2, err := os.Open(file2)
 	if err != nil {
 		fmt.Println(err)

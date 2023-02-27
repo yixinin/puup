@@ -1,6 +1,3 @@
-$env:GOOS="windows"
-$env:GOARCH=""
-
 go build -o puup.exe ./cmd
 go build -o ssh.exe ./cmd/ssh
 
@@ -21,3 +18,5 @@ go build -o dist/wasm/httpclient.wasm ./cmd/wasm
 ./deploy.ps1
 
 
+$env:GOOS="windows"
+$env:GOARCH=""
