@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"strings"
 	"syscall/js"
@@ -30,7 +31,8 @@ from:
 var hc *http.Client
 
 func main() {
-	logrus.SetLevel(logrus.DebugLevel)
+	logrus.SetLevel(logrus.ErrorLevel)
+	fmt.Println(os.Getenv("GOOS"), os.Getenv("GOARCH"))
 	fmt.Println("============================================")
 	fmt.Println("init wasm ...")
 	fmt.Println("============================================")

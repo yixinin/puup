@@ -29,7 +29,7 @@ func NewConn(rwr conn.ReadWriterReleaser) *Conn {
 		ReadWriterReleaser: rwr,
 		close:              make(chan struct{}),
 	}
-	if os.Getenv("GOOS") != "wasm" {
+	if os.Getenv("GOOS") != "js" {
 		rdf, err := os.Create(fmt.Sprintf("riface_%s.txt", time.Now().Format("20060102150405")))
 		if err != nil {
 			logrus.Errorf("create file error:%v", err)

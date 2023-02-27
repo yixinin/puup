@@ -158,7 +158,7 @@ func (c *Channel) TakeConn() bool {
 	if c.status != Idle {
 		return false
 	}
-	if os.Getenv("GOOS") != "wasm" {
+	if os.Getenv("GOOS") != "js" {
 		rdname := time.Now().Format("rrtc-20060102150405.txt")
 		wrname := time.Now().Format("wrtc-20060102150405.txt")
 		rdf, err := os.Create(rdname)
