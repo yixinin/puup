@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"runtime/debug"
 	"strings"
 	"syscall/js"
@@ -31,11 +30,18 @@ from:
 var hc *http.Client
 
 func main() {
+	Init()
+	<-make(chan bool)
+}
+
+func Init() {
+	defer func() {
+		if r := recover(); r != nil {
+			logrus.WithField("stacks", string(debug.Stack())).Errorf("recovered %v", r)
+		}
+	}()
 	logrus.SetLevel(logrus.ErrorLevel)
-	fmt.Println(os.Getenv("GOOS"), os.Getenv("GOARCH"))
-	fmt.Println("============================================")
 	fmt.Println("init wasm ...")
-	fmt.Println("============================================")
 
 	serverName := js.Global().Get("serverName").String()
 	fmt.Println("connect to server", serverName)
@@ -54,7 +60,6 @@ func main() {
 		Transport: tp,
 		Timeout:   120 * time.Second,
 	}
-	<-make(chan bool)
 }
 
 func encodeWrapper() js.Func {

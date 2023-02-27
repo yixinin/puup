@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"io"
 	"net"
-	"os"
-	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
@@ -60,8 +58,6 @@ type Channel struct {
 	status ChanStatus
 	Type   webrtc.SDPType
 	label  *Label
-
-	rdf, wrf *os.File
 
 	laddr, raddr net.Addr
 	dc           *webrtc.DataChannel
@@ -133,9 +129,6 @@ func (c *Channel) OnMessage(msg webrtc.DataChannelMessage) {
 	case <-c.close:
 		return
 	case <-c.open:
-		if c.rdf != nil {
-			c.rdf.Write(msg.Data)
-		}
 		if c.TakeConn() {
 			if c.Type == webrtc.SDPTypeAnswer && c.accept != nil {
 				logrus.Debugf("channel %s accept", c.Label().String())
@@ -157,20 +150,6 @@ func min(a, b int) int {
 func (c *Channel) TakeConn() bool {
 	if c.status != Idle {
 		return false
-	}
-	if os.Getenv("GOOS") != "js" {
-		rdname := time.Now().Format("rrtc-20060102150405.txt")
-		wrname := time.Now().Format("wrtc-20060102150405.txt")
-		rdf, err := os.Create(rdname)
-		if err != nil {
-			logrus.Errorf("create log file error:%v", err)
-		}
-		wrf, err := os.Create(wrname)
-		if err != nil {
-			logrus.Errorf("create log file error:%v", err)
-		}
-		c.rdf = rdf
-		c.wrf = wrf
 	}
 
 	logrus.Debugf("channel %s taken", c.Label().String())
