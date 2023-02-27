@@ -2,25 +2,23 @@ package conn
 
 import (
 	"bufio"
-	"context"
 	"io"
 	"net"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/stderr"
 )
 
 type ChanStatus string
 
 const (
-	Opening  ChanStatus = "opening"
-	Idle     ChanStatus = "idle"
-	Active   ChanStatus = "active"
-	WaitIdle ChanStatus = "waitIdle"
-	Closed   ChanStatus = "closed"
+	Opening ChanStatus = "opening"
+	Idle    ChanStatus = "idle"
+	Active  ChanStatus = "active"
+	Closed  ChanStatus = "closed"
 )
 
 type ChannelReader struct {
@@ -74,13 +72,11 @@ type Channel struct {
 	accept  chan ReadWriterReleaser
 	release chan ReadWriterReleaser
 
-	wg sync.WaitGroup
-
 	batchSize int
 
-	rd       *ChannelReader
-	buffer   *bufio.Reader
-	sendData chan []byte
+	rd     *ChannelReader
+	buffer *bufio.Reader
+	// sendData chan []byte
 }
 
 func NewOfferChannel(sname, cid string, dc *webrtc.DataChannel, label *Label, release chan ReadWriterReleaser) *Channel {
@@ -179,15 +175,11 @@ func (c *Channel) TakeConn() bool {
 
 	logrus.Debugf("channel %s taken", c.Label().String())
 	c.status = Active
-	c.sendData = make(chan []byte, 10)
-	c.wg = sync.WaitGroup{}
-	c.wg.Add(1)
+
 	var rd = NewChannelReader(c.batchSize)
 	c.rd = rd
 	c.buffer = bufio.NewReader(rd)
-	GoFunc(context.TODO(), func(ctx context.Context) error {
-		return c.loopWrite(ctx)
-	})
+
 	return true
 }
 func (c *Channel) Release() {
@@ -195,15 +187,8 @@ func (c *Channel) Release() {
 	if c.status != Active {
 		return
 	}
-	c.status = WaitIdle
-	go func() {
-		c.wg.Wait()
-		c.rd.Release()
-		close(c.sendData)
-		c.release <- c
-		c.status = Idle
-	}()
-
+	c.rd.Release()
+	c.status = Idle
 }
 
 func (c *Channel) Close() error {
@@ -235,11 +220,7 @@ func (c *Channel) Read(data []byte) (n int, err error) {
 		}
 		return 0, io.EOF
 	default:
-		n, err := c.buffer.Read(data)
-		if err != nil {
-			return 0, err
-		}
-		return n, err
+		return c.buffer.Read(data)
 	}
 }
 
@@ -251,39 +232,40 @@ func (c *Channel) Write(data []byte) (int, error) {
 		select {
 		case <-c.close:
 			return 0, net.ErrClosed
-		case c.sendData <- data[i:writen]:
+		case <-c.open:
+			err := c.dc.Send(data[i:writen])
+			if err != nil {
+				return writen, stderr.Wrap(err)
+			}
 		}
-	}
-	if c.status == WaitIdle {
-		c.wg.Done()
 	}
 	return writen, nil
 }
 
-func (c *Channel) loopWrite(ctx context.Context) error {
-	var total = 0
-	defer func() {
-		logrus.Infof("%s send loop end, total send: %d", c.dc.Label(), total)
-	}()
-	<-c.open
+// func (c *Channel) loopWrite(ctx context.Context) error {
+// 	var total = 0
+// 	defer func() {
+// 		logrus.Infof("%s send loop end, total send: %d", c.dc.Label(), total)
+// 	}()
+// 	<-c.open
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case data, ok := <-c.sendData:
-			if !ok {
-				return nil
-			}
-			logrus.Debugf("%s send data %d", c.dc.Label(), len(data))
-			total += len(data)
-			if c.wrf != nil {
-				c.wrf.Write(data)
-			}
-			err := c.dc.Send(data)
-			if err != nil {
-				logrus.Errorf("send data error")
-			}
-		}
-	}
-}
+// 	for {
+// 		select {
+// 		case <-ctx.Done():
+// 			return ctx.Err()
+// 		case data, ok := <-c.sendData:
+// 			if !ok {
+// 				return nil
+// 			}
+// 			logrus.Debugf("%s send data %d", c.dc.Label(), len(data))
+// 			total += len(data)
+// 			if c.wrf != nil {
+// 				c.wrf.Write(data)
+// 			}
+// 			err := c.dc.Send(data)
+// 			if err != nil {
+// 				logrus.Errorf("send data error")
+// 			}
+// 		}
+// 	}
+// }

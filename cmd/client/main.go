@@ -12,7 +12,7 @@ import (
 
 func main() {
 
-	Download()
+	Check()
 }
 
 func Download() {
@@ -43,14 +43,14 @@ var file1 = `C:\Users\eason\Pictures\opi5.png`
 var file2 = `C:\Users\eason\Pictures\http1.png`
 
 func Check() {
-	file1 = "srv_wiface.txt"
+	file1 = "swi.txt"
 	f1, err := os.Open(file1)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 	defer f1.Close()
-	file2 = "srv_wrtc.txt"
+	file2 = "swr.txt"
 	f2, err := os.Open(file2)
 	if err != nil {
 		fmt.Println(err)
