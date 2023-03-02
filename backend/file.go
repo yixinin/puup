@@ -11,6 +11,7 @@ import (
 
 	"github.com/yixinin/puup/config"
 	pnet "github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/storage/file"
 )
 
 type FileServer struct {
@@ -21,10 +22,44 @@ func NewFileServer(cfg *config.Config, lis *pnet.Listener) *FileServer {
 	return &FileServer{lis: lis}
 }
 
+func (t file.FileType) String() string {
+	switch t {
+	case file.TypeImage:
+		return "image"
+	case file.TypeVideo:
+		return "video"
+	case file.TypeAudio:
+		return "audio"
+	case file.TypeDoc:
+		return "doc"
+	}
+	return "other"
+}
+
 type FileHeader struct {
-	Type     string `json:"type"`
-	Path     string `json:"path"`
-	Filename string `json:"filename"`
+	Transfer string        `json:"trans"`
+	Path     string        `json:"path"`
+	FileName string        `json:"file"`
+	Size     uint64        `json:"size"`
+	FileType file.FileType `json:"type"`
+}
+
+type UploadReq struct {
+	Path     string        `json:"path"`
+	Size     uint64        `json:"size"`
+	Etag     string        `json:"etag"`
+	FileType file.FileType `json:"type"`
+}
+
+type UploadAck struct {
+	Code int    `json:"code,omitempty"`
+	Path string `json:"path,omitempty"`
+	Etag string `json:"etag,omitempty"`
+}
+
+type DownloadReq struct {
+}
+type DownloadAck struct {
 }
 
 func (s *FileServer) Run(ctx context.Context) error {
@@ -53,9 +88,9 @@ func (s *FileServer) ServeConn(ctx context.Context, rconn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	var filename = filepath.Join(header.Path, header.Filename)
-	switch header.Type {
-	case "pull":
+	var filename = filepath.Join(header.Path, header.FileName)
+	switch header.Transfer {
+	case "download":
 		f, err := os.Open(filename)
 		if err != nil {
 			return err
@@ -65,7 +100,7 @@ func (s *FileServer) ServeConn(ctx context.Context, rconn net.Conn) error {
 			return nil
 		}
 		return err
-	case "push":
+	case "upload":
 		f, err := os.Create(filename)
 		if err != nil {
 			return err
@@ -77,4 +112,10 @@ func (s *FileServer) ServeConn(ctx context.Context, rconn net.Conn) error {
 		return err
 	}
 	return nil
+}
+
+func (f FileServer) upload(r net.Conn, header UploadReq) (UploadAck, error) {
+	var ack = UploadAck{}
+
+	return ack, nil
 }

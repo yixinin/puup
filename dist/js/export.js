@@ -70,8 +70,26 @@ async function data() {
         const response = await GoHttp("GET", "http://localhost/data", null)
         const s = await response.text()
         var arr = JSON.parse(s)
-        console.log(arr[arr.length-1])
+        console.log(arr[arr.length - 1])
     } catch (err) {
         console.error('Caught exception', err)
+    }
+}
+
+function get(url) {
+    var req = new XMLHttpRequest()
+    req.open("GET", url, true)
+    req.responseType = "blob";
+    req.onload = function (oEvent) {
+        var arrayBuffer = oReq.response; // 注意：不是 oReq.responseText
+        if (arrayBuffer) {
+            var byteArray = new Uint8Array(arrayBuffer);
+            for (var i = 0; i < byteArray.byteLength; i++) {
+                // 对数组中的每个字节进行操作
+            }
+        }
+    };
+    req.onreadystatechange = function (e) {
+        
     }
 }
