@@ -31,6 +31,20 @@ const (
 	TypeOther = 10
 )
 
+func (t FileType) String() string {
+	switch t {
+	case TypeImage:
+		return "image"
+	case TypeVideo:
+		return "video"
+	case TypeAudio:
+		return "audio"
+	case TypeDoc:
+		return "doc"
+	}
+	return "other"
+}
+
 type UserFile struct {
 	Path       string   `json:"path"`
 	Etag       string   `json:"etag"`

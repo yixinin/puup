@@ -1,3 +1,6 @@
+$env:GOOS="windows"
+$env:GOARCH="amd64"
+
 go build -o puup.exe ./cmd
 go build -o ssh.exe ./cmd/ssh
 
@@ -19,4 +22,4 @@ go build -o dist/wasm/httpclient.wasm ./cmd/wasm
 
 
 $env:GOOS="windows"
-$env:GOARCH=""
+$env:GOARCH="amd64"

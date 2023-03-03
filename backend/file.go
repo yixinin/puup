@@ -4,14 +4,16 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/yixinin/puup/config"
+	"github.com/yixinin/puup/db/file"
 	pnet "github.com/yixinin/puup/net"
-	"github.com/yixinin/puup/storage/file"
 )
 
 type FileServer struct {
@@ -20,20 +22,6 @@ type FileServer struct {
 
 func NewFileServer(cfg *config.Config, lis *pnet.Listener) *FileServer {
 	return &FileServer{lis: lis}
-}
-
-func (t file.FileType) String() string {
-	switch t {
-	case file.TypeImage:
-		return "image"
-	case file.TypeVideo:
-		return "video"
-	case file.TypeAudio:
-		return "audio"
-	case file.TypeDoc:
-		return "doc"
-	}
-	return "other"
 }
 
 type FileHeader struct {
@@ -114,8 +102,13 @@ func (s *FileServer) ServeConn(ctx context.Context, rconn net.Conn) error {
 	return nil
 }
 
-func (f FileServer) upload(r net.Conn, header UploadReq) (UploadAck, error) {
+func (f *FileServer) upload(ctx context.Context, r net.Conn, req UploadReq) (UploadAck, error) {
 	var ack = UploadAck{}
+	// check
+	realFile, err := file.GetStorage().GetFile(ctx, req.Etag, req.Size)
+	if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+		return ack, err
+	}
 
 	return ack, nil
 }
