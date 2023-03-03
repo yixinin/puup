@@ -2,15 +2,22 @@ package backend
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
-	"path/filepath"
+	"strconv"
+	"strings"
+	"unicode"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/config"
+	"github.com/yixinin/puup/db/file"
 	"github.com/yixinin/puup/middles"
 	pnet "github.com/yixinin/puup/net"
 )
@@ -48,31 +55,7 @@ func (s *WebServer) Run(ctx context.Context) error {
 	e.GET("/hello", func(c *gin.Context) {
 		c.JSON(200, gin.H{"msg": "hello there"})
 	})
-	e.POST("/file/upload", func(c *gin.Context) {
-		fielname := c.Request.Header.Get("filename")
-		fielname = filepath.Join("share", fielname)
-		del := c.Request.Header.Get("del")
-		if _, err := os.Stat(fielname); err != os.ErrExist {
-			if del != "del" {
-				c.String(400, "file already exsit")
-				return
-			}
-			os.Remove(fielname)
-		}
 
-		f, err := os.Create(fielname)
-		if err != nil {
-			c.String(400, err.Error())
-			return
-		}
-		defer c.Request.Body.Close()
-		_, err = io.Copy(f, c.Request.Body)
-		if err != nil {
-			c.String(400, err.Error())
-			return
-		}
-		c.String(200, "")
-	})
 	e.GET("/hello/:id", func(c *gin.Context) {
 		var req struct {
 			Id int `uri:"id"`
@@ -86,6 +69,7 @@ func (s *WebServer) Run(ctx context.Context) error {
 	e.StaticFS("/share", http.Dir("share"))
 	e.GET("/data", SendSerisData)
 	e.GET("/opi5", Image)
+	initFile(e)
 	// e.StaticFS("/share", http.Dir(shareDir))
 	e.NoRoute(func(c *gin.Context) {
 		c.JSON(200, gin.H{"msg": "are you lost?"})
@@ -123,4 +107,145 @@ func Image(c *gin.Context) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/octet-stream")
 	io.Copy(c.Writer, f)
+}
+
+func initFile(e *gin.Engine) {
+	g := e.Group("file")
+
+	g.HEAD("/:id", Head)
+	g.POST("/upload/pre", PreUpload)
+	g.GET("/download/:id", Download)
+}
+
+func PreUpload(c *gin.Context) {
+	var req UploadReq
+	var ack UploadAck
+	var ctx = c.Request.Context()
+	if err := c.BindJSON(&req); err != nil {
+		c.String(400, err.Error())
+		return
+	}
+	realFile, err := file.GetStorage().GetFile(ctx, req.Etag, req.Size)
+	if errors.Is(err, badger.ErrKeyNotFound) {
+		c.AbortWithStatus(404)
+		return
+	}
+	if err != nil {
+		c.String(400, err.Error())
+		return
+	}
+	// copy
+	uf := file.CopyFile(realFile, req.Path)
+	ack.Etag = realFile.Etag
+	ack.Path = uf.Path
+	c.JSON(200, ack)
+	return
+}
+
+func Head(c *gin.Context) {
+	var ctx = c.Request.Context()
+	path := c.Param("id")
+	uf, err := file.GetStorage().GetUserFile(ctx, path)
+	if errors.Is(err, badger.ErrKeyNotFound) {
+		c.AbortWithStatus(404)
+		return
+	}
+	if err != nil {
+		c.String(400, err.Error())
+		return
+	}
+
+	c.Header("ETAG", uf.Etag)
+	c.Header("Content-Length", strconv.FormatUint(uf.Size, 10))
+	return
+}
+
+func Download(c *gin.Context) {
+	var ctx = c.Request.Context()
+	path := c.Param("id")
+	// read range
+	var rg = c.Request.Header.Get("Range")
+	var start, end int
+	var err error
+	if rg != "" {
+		rgs := strings.Split(rg, "-")
+		start, err = strconv.Atoi(rgs[0])
+		if err != nil {
+			c.String(400, err.Error())
+			return
+		}
+		if len(rgs) > 1 && rgs[1] != "" {
+			end, err = strconv.Atoi(rgs[1])
+			if err != nil {
+				c.String(400, err.Error())
+				return
+			}
+		}
+	}
+	uf, err := file.GetStorage().GetUserFile(ctx, path)
+	if errors.Is(err, badger.ErrKeyNotFound) {
+		c.AbortWithStatus(404)
+		return
+	}
+	if err != nil {
+		c.String(400, err.Error())
+		return
+	}
+	c.Header("ETAG", uf.Etag)
+	c.Header("Content-Length", strconv.FormatUint(uf.Size-uint64(start), 10))
+	var filename = uf.Path
+	if isASCII(filename) {
+		c.Writer.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	} else {
+		c.Writer.Header().Set("Content-Disposition", `attachment; filename*=UTF-8''`+url.QueryEscape(filename))
+	}
+	fs, err := os.Open(uf.RealPath)
+	if err != nil {
+		c.String(400, err.Error())
+		return
+	}
+	defer fs.Close()
+	if start > 0 {
+		_, err := fs.Seek(int64(start), os.SEEK_SET)
+		if err != nil {
+			c.String(400, err.Error())
+			return
+		}
+	}
+	c.Status(200)
+	var total int64
+	if end > start {
+		c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, uf.Size))
+		var buf = make([]byte, 4096)
+		for i := start; i < end; i += 4096 {
+			n, err := fs.Read(buf)
+			if err != nil && err != io.EOF {
+				c.String(400, err.Error())
+				return
+			}
+			writen, err := c.Writer.Write(buf[:n])
+			if err != nil && err != io.EOF {
+				c.String(400, err.Error())
+				return
+			}
+			total += int64(writen)
+		}
+	} else {
+		c.Header("Content-Range", fmt.Sprintf("bytes %d-/%d", start, uf.Size))
+	}
+	total, err = io.Copy(c.Writer, fs)
+	if err != nil {
+		logrus.Errorf("write file error")
+		return
+	}
+
+	return
+}
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
 }

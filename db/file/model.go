@@ -2,6 +2,7 @@ package file
 
 import (
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -19,6 +20,14 @@ func (f *File) Key() string {
 
 func GetFileKey(etag string, size uint64) string {
 	return fmt.Sprintf("file/%s/%d", etag, size)
+}
+func GetFileName(etag string, size uint64, ext string) string {
+	var dir, _ = os.Getwd()
+	return fmt.Sprintf("%s/files/%s.%d%s", dir, etag, size, ext)
+}
+
+func GetUserFileKey(path string) string {
+	return fmt.Sprintf("file/user/%s", path)
 }
 
 type FileType uint8
@@ -50,9 +59,22 @@ type UserFile struct {
 	Etag       string   `json:"etag"`
 	Size       uint64   `json:"size"`
 	RealPath   string   `json:"realPath"`
-	FileType   FileType `json:"type"`
+	Type       FileType `json:"type"`
 	CreateTime int64    `json:"create"`
 	UpdateTime int64    `json:"update"`
+}
+
+func CopyFile(f File, path string) UserFile {
+	var now = time.Now().Unix()
+	return UserFile{
+		Path:       path,
+		Etag:       f.Etag,
+		Size:       f.Size,
+		RealPath:   f.Path,
+		Type:       f.Type,
+		CreateTime: now,
+		UpdateTime: now,
+	}
 }
 
 func (f *UserFile) Key() string {
