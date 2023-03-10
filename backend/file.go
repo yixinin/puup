@@ -15,6 +15,8 @@ import (
 	"github.com/yixinin/puup/config"
 	"github.com/yixinin/puup/db/file"
 	pnet "github.com/yixinin/puup/net"
+	"github.com/yixinin/puup/preview"
+	"github.com/yixinin/puup/stderr"
 )
 
 type FileServer struct {
@@ -85,51 +87,69 @@ func (s *FileServer) ServeConn(ctx context.Context, rconn net.Conn) error {
 func (f *FileServer) upload(ctx context.Context, r net.Conn, req UploadReq) (UploadAck, error) {
 	var ack = UploadAck{}
 	// check
-	rf, err := file.GetStorage().GetFile(ctx, req.Etag, req.Size)
+	realFile, err := file.GetStorage().GetFile(ctx, req.Etag, req.Size)
 	if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 		return ack, err
 	}
+	var fs *os.File
+	var previewPath, filename = file.GetFileName(req.Etag, req.Size, filepath.Ext(req.Path))
+	if req.StartAt == 0 {
+		// exists, copy file
+		if err == nil {
+			uf := file.CopyFile(realFile, req.Path)
+			err = file.GetStorage().InsertUserFile(ctx, uf)
+			if err != nil {
+				return ack, err
+			}
+			ack.Etag = req.Etag
+			ack.Path = req.Path
+			return ack, nil
+		}
 
-	// exists, copy file
-	if err == nil {
-		uf := file.CopyFile(rf, req.Path)
-		err = file.GetStorage().InsertUserFile(ctx, uf)
+		// new file
+		realFile = file.File{
+			Etag: req.Etag,
+			Type: req.FileType,
+			Size: req.Size,
+			Path: filename,
+		}
+		if req.FileType == file.TypeImage || req.FileType == file.TypeVideo {
+			realFile.PreviewPath = previewPath
+		}
+		err = file.GetStorage().InsertFile(ctx, realFile)
 		if err != nil {
 			return ack, err
 		}
-		ack.Etag = req.Etag
-		ack.Path = req.Path
-		return ack, nil
-	}
-	// new file
-	var filename = file.GetFileName(req.Etag, req.Size, filepath.Ext(req.Path))
-	var realFile = file.File{
-		Etag: req.Etag,
-		Type: req.FileType,
-		Size: req.Size,
-		Path: filename,
-	}
-	err = file.GetStorage().InsertFile(ctx, realFile)
-	if err != nil {
-		return ack, err
-	}
-
-	var fs *os.File
-
-	if req.StartAt == 0 {
 		fs, err = os.Create(filename)
 	} else {
+		if err != nil {
+			return ack, stderr.Wrap(err)
+		}
 		fs, err = os.Open(filename)
 		if err != nil {
-			return ack, err
+			return ack, stderr.Wrap(err)
 		}
-		_, err = fs.Seek(int64(req.StartAt), os.SEEK_SET)
+		_, err = fs.Seek(int64(req.StartAt), io.SeekStart)
 	}
+	if err != nil {
+		return ack, stderr.Wrap(err)
+	}
+
+	defer fs.Close()
+	_, err = io.Copy(fs, r)
 	if err != nil {
 		return ack, err
 	}
-	defer fs.Close()
-	_, err = io.Copy(fs, r)
+	if err := fs.Close(); err != nil {
+		return ack, stderr.Wrap(err)
+	}
+
+	switch req.FileType {
+	case file.TypeImage:
+		err = preview.SaveImagePreview(filename, previewPath)
+	case file.TypeVideo:
+		err = preview.SaveVideoPreview(filename, previewPath, 60)
+	}
 	if err != nil {
 		return ack, err
 	}

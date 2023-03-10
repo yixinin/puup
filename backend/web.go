@@ -114,7 +114,7 @@ func initFile(e *gin.Engine) {
 
 	g.HEAD("/:id", Head)
 	g.POST("/upload/pre", PreUpload)
-	g.GET("/download/:id", Download)
+	g.StaticFS("/file", FileSystem{})
 }
 
 func PreUpload(c *gin.Context) {
@@ -157,7 +157,18 @@ func Head(c *gin.Context) {
 
 	c.Header("ETAG", uf.Etag)
 	c.Header("Content-Length", strconv.FormatUint(uf.Size, 10))
-	return
+}
+
+type FileSystem struct {
+}
+
+func (f FileSystem) Open(name string) (http.File, error) {
+	uf, err := file.GetStorage().GetUserFile(context.Background(), name)
+	if err != nil {
+		return nil, err
+	}
+	fs, err := os.Open(uf.RealPath)
+	return fs, err
 }
 
 func Download(c *gin.Context) {

@@ -95,7 +95,6 @@ func (p *Peer) loop() {
 		case cmd := <-p.cmdChan:
 			switch cmd.Cmd {
 			case CmdConnect:
-
 			case CmdDisConnect:
 				p.ChannelPool.OnRelease(cmd.Label)
 			case CmdEOF:

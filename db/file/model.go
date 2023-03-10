@@ -7,11 +7,12 @@ import (
 )
 
 type File struct {
-	Etag      string   `json:"etag"`
-	Size      uint64   `json:"size"`
-	Path      string   `json:"path"`
-	Type      FileType `json:"type"`
-	Reference int      `json:"ref"`
+	Etag        string   `json:"etag"`
+	Size        uint64   `json:"size"`
+	Path        string   `json:"path"`
+	PreviewPath string   `json:"preview"`
+	Type        FileType `json:"type"`
+	Reference   int      `json:"ref"`
 }
 
 func (f *File) Key() string {
@@ -21,9 +22,11 @@ func (f *File) Key() string {
 func GetFileKey(etag string, size uint64) string {
 	return fmt.Sprintf("file/%s/%d", etag, size)
 }
-func GetFileName(etag string, size uint64, ext string) string {
+func GetFileName(etag string, size uint64, ext string) (string, string) {
 	var dir, _ = os.Getwd()
-	return fmt.Sprintf("%s/files/%s.%d%s", dir, etag, size, ext)
+	filename := fmt.Sprintf("%s/files/%s_%d.%s", dir, etag, size, ext)
+	previewFilename := fmt.Sprintf("%s/previews/%s_%d.png", dir, etag, size)
+	return filename, previewFilename
 }
 
 func GetUserFileKey(path string) string {
@@ -55,25 +58,27 @@ func (t FileType) String() string {
 }
 
 type UserFile struct {
-	Path       string   `json:"path"`
-	Etag       string   `json:"etag"`
-	Size       uint64   `json:"size"`
-	RealPath   string   `json:"realPath"`
-	Type       FileType `json:"type"`
-	CreateTime int64    `json:"create"`
-	UpdateTime int64    `json:"update"`
+	Path        string   `json:"path"`
+	Etag        string   `json:"etag"`
+	Size        uint64   `json:"size"`
+	RealPath    string   `json:"realPath"`
+	PreviewPath string   `json:"preview"`
+	Type        FileType `json:"type"`
+	CreateTime  int64    `json:"create"`
+	UpdateTime  int64    `json:"update"`
 }
 
 func CopyFile(f File, path string) UserFile {
 	var now = time.Now().Unix()
 	return UserFile{
-		Path:       path,
-		Etag:       f.Etag,
-		Size:       f.Size,
-		RealPath:   f.Path,
-		Type:       f.Type,
-		CreateTime: now,
-		UpdateTime: now,
+		Path:        path,
+		Etag:        f.Etag,
+		Size:        f.Size,
+		RealPath:    f.Path,
+		PreviewPath: f.PreviewPath,
+		Type:        f.Type,
+		CreateTime:  now,
+		UpdateTime:  now,
 	}
 }
 
