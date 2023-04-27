@@ -1,56 +1,91 @@
 package server
 
-import "sync"
+import (
+	"net"
+	"sync"
 
-type Backend struct {
+	"github.com/gorilla/websocket"
+)
+
+const NoCluster = "nc"
+
+type Client struct {
+	Id   string
+	conn *websocket.Conn
+}
+
+func (c *Client) Close() {
+	if c == nil || c.conn == nil {
+		return
+	}
+	c.conn.Close()
+}
+func (c *Client) Send(v any) error {
+	if c.conn == nil || v == nil {
+		return net.ErrClosed
+	}
+	return c.conn.WriteJSON(v)
+}
+
+type Cluster struct {
 	sync.RWMutex
-
-	sigAddr  string
-	sessions map[string]*Session
+	Name      string
+	backends  map[string]*Client
+	frontends map[string]*Client
 }
 
-func NewBackend(name string) *Backend {
-	return &Backend{
-		sigAddr:  name,
-		sessions: make(map[string]*Session),
+func NewCluster(name string) *Cluster {
+	return &Cluster{
+		Name:      name,
+		backends:  make(map[string]*Client, 1),
+		frontends: make(map[string]*Client, 1),
+	}
+}
+func (c *Cluster) AddBackend(id string, conn *websocket.Conn) {
+	c.Lock()
+	defer c.Unlock()
+	if v, ok := c.backends[id]; ok {
+		v.Close()
+	}
+	c.backends[id] = &Client{id, conn}
+}
+func (c *Cluster) AddFrontend(id string, conn *websocket.Conn) {
+	c.Lock()
+	defer c.Unlock()
+	if v, ok := c.frontends[id]; ok {
+		v.Close()
+	}
+	c.frontends[id] = &Client{id, conn}
+}
+
+func (c *Cluster) DelBackend(id string) {
+	c.Lock()
+	defer c.Unlock()
+	if v, ok := c.backends[id]; ok {
+		v.Close()
+		delete(c.backends, id)
 	}
 }
 
-func (b *Backend) GetSession(id string) *Session {
-	b.Lock()
-	defer b.Unlock()
-
-	sess, ok := b.sessions[id]
-	if ok {
-		return sess
+func (c *Cluster) DelFrontend(id string) {
+	c.Lock()
+	defer c.Unlock()
+	if v, ok := c.frontends[id]; ok {
+		v.Close()
+		delete(c.frontends, id)
 	}
-	return nil
 }
 
-func (b *Backend) MustGetSession(id string) *Session {
-	b.Lock()
-	defer b.Unlock()
-
-	sess, ok := b.sessions[id]
-	if ok {
-		return sess
-	}
-	sess = NewSession(id)
-	b.sessions[id] = sess
-	return sess
+func (c *Cluster) GetBackend(id string) (*Client, bool) {
+	c.RLock()
+	defer c.RUnlock()
+	b, ok := c.backends[id]
+	return b, ok
 }
 
-func (b *Backend) DelSession(id string) {
-	b.Lock()
-	defer b.Unlock()
-	delete(b.sessions, id)
-}
-
-func (b *Backend) RandSession() *Session {
-	b.RLock()
-	defer b.RUnlock()
-	for _, sess := range b.sessions {
-		return sess
-	}
-	return nil
+func (c *Cluster) GetFrontend(id string) (*Client, bool) {
+	c.RLock()
+	defer c.RUnlock()
+	f, ok := c.frontends[id]
+	return f, ok
 }
