@@ -31,28 +31,38 @@ type Server struct {
 	sync.RWMutex
 	websocket.Upgrader
 
-	cluster map[string]*Cluster
+	// cluster map[string]*Cluster
+
+	sessions map[string]Session
 }
 
 func (s *Server) AddBackend(name string, id string, conn *websocket.Conn) {
 	s.Lock()
 	defer s.Unlock()
-	c, ok := s.cluster[name]
+	sess, ok := s.sessions[name]
 	if !ok {
-		c = NewCluster(name)
-		s.cluster[name] = c
+		sess = Session{
+			ClusterName: name,
+			Backends:    make(map[string]*Client),
+			Frontends:   make(map[string]*Client),
+		}
+		s.sessions[name] = sess
 	}
-	c.AddBackend(id, conn)
+	sess.Backends[id] = &Client{
+		Id:    id,
+		conn:  conn,
+		Peers: make(map[string]string),
+	}
 }
 func (s *Server) GetBackends(name string) []string {
 	s.RLock()
 	defer s.RUnlock()
-	c, ok := s.cluster[name]
+	sess, ok := s.sessions[name]
 	if !ok {
 		return nil
 	}
-	var ids = make([]string, len(c.backends))
-	for k := range c.backends {
+	var ids = make([]string, len(sess.Backends))
+	for k := range sess.Backends {
 		ids = append(ids, k)
 	}
 	return ids
@@ -61,61 +71,67 @@ func (s *Server) GetBackends(name string) []string {
 func (s *Server) GetBackend(name string, id string) (*Client, bool) {
 	s.RLock()
 	defer s.RUnlock()
-	c, ok := s.cluster[name]
+	sess, ok := s.sessions[name]
 	if !ok {
 		return nil, false
 	}
 
-	return c.GetBackend(id)
+	b, ok := sess.Backends[id]
+	return b, ok
 }
 
 func (s *Server) DelBackend(name, id string) {
 	s.Lock()
 	defer s.Unlock()
-	c, ok := s.cluster[name]
+	sess, ok := s.sessions[name]
 	if !ok {
 		return
 	}
-	c.DelBackend(id)
-	if len(c.backends) == 0 {
-		delete(s.cluster, name)
+	delete(sess.Backends, id)
+	if len(sess.Backends) == 0 {
+		delete(s.sessions, name)
 	}
 }
 
 func (s *Server) AddFrontend(name string, id string, conn *websocket.Conn) bool {
 	s.Lock()
 	defer s.Unlock()
-	c, ok := s.cluster[name]
+	sess, ok := s.sessions[name]
 	if !ok {
 		return false
 	}
-	c.AddFrontend(id, conn)
+	sess.Frontends[id] = &Client{
+		Id:    id,
+		conn:  conn,
+		Peers: make(map[string]string),
+	}
 	return true
 }
 
 func (s *Server) GetFrontend(name string, id string) (*Client, bool) {
 	s.RLock()
 	defer s.RUnlock()
-	c, ok := s.cluster[name]
+	sess, ok := s.sessions[name]
 	if !ok {
 		return nil, false
 	}
-	return c.GetFrontend(id)
+	f, ok := sess.Frontends[id]
+	return f, ok
 }
 
 func (s *Server) DelFrontend(name, id string) {
 	s.Lock()
 	defer s.Unlock()
-	c, ok := s.cluster[name]
+	sess, ok := s.sessions[name]
 	if !ok {
 		return
 	}
-	c.DelFrontend(id)
+	delete(sess.Frontends, id)
 }
 
 func NewServer() *Server {
 	return &Server{
-		cluster: make(map[string]*Cluster),
+		sessions: make(map[string]Session),
 	}
 }
 

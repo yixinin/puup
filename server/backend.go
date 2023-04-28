@@ -2,7 +2,6 @@ package server
 
 import (
 	"net"
-	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -10,8 +9,9 @@ import (
 const NoCluster = "nc"
 
 type Client struct {
-	Id   string
-	conn *websocket.Conn
+	Id    string
+	Peers map[string]string
+	conn  *websocket.Conn
 }
 
 func (c *Client) Close() {
@@ -25,67 +25,4 @@ func (c *Client) Send(v any) error {
 		return net.ErrClosed
 	}
 	return c.conn.WriteJSON(v)
-}
-
-type Cluster struct {
-	sync.RWMutex
-	Name      string
-	backends  map[string]*Client
-	frontends map[string]*Client
-}
-
-func NewCluster(name string) *Cluster {
-	return &Cluster{
-		Name:      name,
-		backends:  make(map[string]*Client, 1),
-		frontends: make(map[string]*Client, 1),
-	}
-}
-func (c *Cluster) AddBackend(id string, conn *websocket.Conn) {
-	c.Lock()
-	defer c.Unlock()
-	if v, ok := c.backends[id]; ok {
-		v.Close()
-	}
-	c.backends[id] = &Client{id, conn}
-}
-func (c *Cluster) AddFrontend(id string, conn *websocket.Conn) {
-	c.Lock()
-	defer c.Unlock()
-	if v, ok := c.frontends[id]; ok {
-		v.Close()
-	}
-	c.frontends[id] = &Client{id, conn}
-}
-
-func (c *Cluster) DelBackend(id string) {
-	c.Lock()
-	defer c.Unlock()
-	if v, ok := c.backends[id]; ok {
-		v.Close()
-		delete(c.backends, id)
-	}
-}
-
-func (c *Cluster) DelFrontend(id string) {
-	c.Lock()
-	defer c.Unlock()
-	if v, ok := c.frontends[id]; ok {
-		v.Close()
-		delete(c.frontends, id)
-	}
-}
-
-func (c *Cluster) GetBackend(id string) (*Client, bool) {
-	c.RLock()
-	defer c.RUnlock()
-	b, ok := c.backends[id]
-	return b, ok
-}
-
-func (c *Cluster) GetFrontend(id string) (*Client, bool) {
-	c.RLock()
-	defer c.RUnlock()
-	f, ok := c.frontends[id]
-	return f, ok
 }

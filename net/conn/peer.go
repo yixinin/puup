@@ -4,12 +4,17 @@ import (
 	"context"
 	"io"
 	"net"
-	"strings"
 
-	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/ice"
+	"github.com/yixinin/puup/proto"
+	"github.com/yixinin/puup/stderr"
 )
+
+type PeerId string
+type ClientId string
+type ClusterName string
 
 type Command string
 
@@ -36,12 +41,8 @@ type ReadWriterReleaser interface {
 type Peer struct {
 	*ChannelPool
 
-	serverName string
-	clientId   string
-
-	Type   webrtc.SDPType
-	sigCli Signalinger
-	pc     *webrtc.PeerConnection
+	sig Signalinger
+	pc  *webrtc.PeerConnection
 
 	cmdChan chan DataChannelCommand
 
@@ -50,26 +51,29 @@ type Peer struct {
 	close     chan struct{}
 }
 
-func newPeer(pc *webrtc.PeerConnection, serverName, clientId string, pt webrtc.SDPType, sigClient Signalinger) *Peer {
+func newPeer(pc *webrtc.PeerConnection, rid, rcid string, pt webrtc.SDPType, sig Signalinger) *Peer {
 	p := &Peer{
-		serverName:  serverName,
-		clientId:    clientId,
-		pc:          pc,
-		Type:        pt,
-		sigCli:      sigClient,
-		cmdChan:     make(chan DataChannelCommand, 1),
-		ChannelPool: NewChannelPool(serverName, clientId, pc, pt),
-		connected:   make(chan struct{}, 1),
-		open:        make(chan struct{}),
-		close:       make(chan struct{}),
+		ChannelPool: NewChannelPool(pc, rid, rcid, pt),
+
+		sig: sig,
+		pc:  pc,
+
+		cmdChan:   make(chan DataChannelCommand, 1),
+		connected: make(chan struct{}, 1),
+		open:      make(chan struct{}),
+		close:     make(chan struct{}),
 	}
 	go p.loop()
 	return p
 }
 
-func NewOfferPeer(pc *webrtc.PeerConnection, serverName string, sigClient Signalinger) (*Peer, error) {
-	clientId := strings.ReplaceAll(uuid.NewString(), "-", "")
-	p := newPeer(pc, serverName, clientId, webrtc.SDPTypeOffer, sigClient)
+func NewOfferPeer(sig Signalinger, remoteClientId string) (*Peer, error) {
+	pc, err := webrtc.NewPeerConnection(ice.Config)
+	if err != nil {
+		return nil, stderr.Wrap(err)
+	}
+
+	p := newPeer(pc, "", remoteClientId, webrtc.SDPTypeOffer, sig)
 	dc, err := pc.CreateDataChannel("keepalive", nil)
 	if err != nil {
 		return nil, err
@@ -81,10 +85,15 @@ func NewOfferPeer(pc *webrtc.PeerConnection, serverName string, sigClient Signal
 
 	return p, nil
 }
-func NewAnswerPeer(pc *webrtc.PeerConnection, serverName, cid string, sigClient Signalinger, accept chan ReadWriterReleaser) *Peer {
-	p := newPeer(pc, serverName, cid, webrtc.SDPTypeAnswer, sigClient)
+func NewAnswerPeer(sig Signalinger, remoteClientId, remoteId string, accept chan ReadWriterReleaser) (*Peer, error) {
+	pc, err := webrtc.NewPeerConnection(ice.Config)
+	if err != nil {
+		return nil, stderr.Wrap(err)
+	}
+
+	p := newPeer(pc, remoteId, remoteClientId, webrtc.SDPTypeAnswer, sig)
 	p.ChannelPool.accept = accept
-	return p
+	return p, nil
 }
 
 func (p *Peer) loop() {
@@ -99,13 +108,8 @@ func (p *Peer) loop() {
 				p.ChannelPool.OnRelease(cmd.Label)
 			case CmdEOF:
 			}
-
 		}
 	}
-}
-
-func (p *Peer) ClientId() string {
-	return p.clientId
 }
 
 func (p *Peer) handleChannel(dc *webrtc.DataChannel) {
@@ -126,12 +130,34 @@ func (p *Peer) handleChannel(dc *webrtc.DataChannel) {
 		}
 	}
 }
+
+func (p *Peer) OnConnectionStateChange(pcs webrtc.PeerConnectionState) {
+	logrus.Infof("connection state changed :%s", pcs)
+	switch pcs {
+	case webrtc.PeerConnectionStateConnected:
+		p.connected <- struct{}{}
+	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateClosed:
+		p.Close()
+	}
+}
+
 func (p *Peer) Connect(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	pc := p.pc
+	p.pc.OnConnectionStateChange(p.OnConnectionStateChange)
+	if err := p.SendOffer(ctx); err != nil {
+		return err
+	}
+	if err := p.WaitAnswer(ctx); err != nil {
+		return err
+	}
+	return nil
+}
 
+func (p *Peer) Listen(ctx context.Context) error {
+	pc := p.pc
+	pc.OnConnectionStateChange(p.OnConnectionStateChange)
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		if dc == nil {
 			return
@@ -144,38 +170,23 @@ func (p *Peer) Connect(ctx context.Context) error {
 			return
 		}
 		logrus.Debugf("send ice")
-		err := p.sigCli.SendCandidate(ctx, p.clientId, p.Type, c)
+		var packet = proto.Packet{
+			From: proto.Client{
+				ClientId: p.sig.Id(),
+				PeerId:   p.Id,
+			},
+			To: proto.Client{
+				PeerId:   p.RemoteId,
+				ClientId: p.RemoteClientId,
+			},
+			ICECandidate: c,
+		}
+		err := p.sig.SendPacket(ctx, packet)
 		if err != nil {
 			logrus.Errorf("send candidate error:%v", err)
 		}
 	})
-
-	pc.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
-		logrus.Infof("connection state changed :%s", pcs)
-		switch pcs {
-		case webrtc.PeerConnectionStateConnected:
-			p.connected <- struct{}{}
-		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateDisconnected, webrtc.PeerConnectionStateClosed:
-			p.Close()
-		}
-	})
-
-	switch p.Type {
-	case webrtc.SDPTypeOffer:
-		if err := p.SendOffer(ctx); err != nil {
-			return err
-		}
-		p.sigCli.Start()
-		defer p.sigCli.End()
-		if err := p.WaitAnswer(ctx); err != nil {
-			return err
-		}
-	case webrtc.SDPTypeAnswer:
-		p.sigCli.Start()
-		defer p.sigCli.End()
-		return p.PollOffer(ctx)
-	}
-	return nil
+	return p.PollOffer(ctx)
 }
 
 func (p *Peer) IsClose() bool {

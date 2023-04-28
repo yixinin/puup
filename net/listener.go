@@ -4,45 +4,48 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
-	"github.com/pion/webrtc/v3"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
-	"github.com/yixinin/puup/ice"
 	"github.com/yixinin/puup/net/conn"
 )
 
 type Listener struct {
 	sync.RWMutex
 
-	serverName string
-	sigClient  *conn.SignalingClient
+	wsURL       string
+	clusterName string
+	id          string
+
+	sig conn.Signalinger
 
 	onClose chan string
 	accept  chan conn.ReadWriterReleaser
 
-	acceptWeb   chan conn.ReadWriterReleaser
-	acceptSsh   chan conn.ReadWriterReleaser
-	acceptFile  chan conn.ReadWriterReleaser
-	acceptProxy chan conn.ReadWriterReleaser
-	peers       map[string]*conn.Peer
+	peers map[string]*conn.Peer
 
 	isClose bool
 	close   chan struct{}
 }
 
-func NewListener(sigAddr, serverName string) *Listener {
+func NewListener(wsURL, clusterName string) *Listener {
+	id := uuid.NewString()
 	lis := &Listener{
-		sigClient:   conn.NewSignalingClient(webrtc.SDPTypeAnswer, sigAddr, serverName),
-		serverName:  serverName,
+		id:          id,
+		sig:         conn.NewWsBackendSigClient(id, wsURL, clusterName),
+		clusterName: clusterName,
 		onClose:     make(chan string, 1),
 		accept:      make(chan conn.ReadWriterReleaser, 100),
-		acceptWeb:   make(chan conn.ReadWriterReleaser, 40),
-		acceptSsh:   make(chan conn.ReadWriterReleaser, 10),
-		acceptFile:  make(chan conn.ReadWriterReleaser, 10),
-		acceptProxy: make(chan conn.ReadWriterReleaser, 40),
 		peers:       make(map[string]*conn.Peer, 1),
 		close:       make(chan struct{}, 1),
 	}
+	go func() {
+		if err := lis.sig.Run(context.Background()); err != nil {
+			logrus.Errorf("sig disconnected:%v", err)
+		}
+		lis.sig.Close(context.Background())
+	}()
 	go lis.loop()
 	return lis
 }
@@ -52,40 +55,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 		select {
 		case <-l.close:
 			return nil, net.ErrClosed
-		case rwr := <-l.acceptWeb:
-			conn := NewConn(rwr)
-			return conn, nil
-		}
-	}
-}
-func (l *Listener) AcceptFile() (net.Conn, error) {
-	for {
-		select {
-		case <-l.close:
-			return nil, net.ErrClosed
-		case rwr := <-l.acceptFile:
-			conn := NewConn(rwr)
-			return conn, nil
-		}
-	}
-}
-func (l *Listener) AcceptSsh() (net.Conn, error) {
-	for {
-		select {
-		case <-l.close:
-			return nil, net.ErrClosed
-		case rwr := <-l.acceptSsh:
-			conn := NewConn(rwr)
-			return conn, nil
-		}
-	}
-}
-func (l *Listener) AcceptProxy() (net.Conn, error) {
-	for {
-		select {
-		case <-l.close:
-			return nil, net.ErrClosed
-		case rwr := <-l.acceptProxy:
+		case rwr := <-l.accept:
 			conn := NewConn(rwr)
 			return conn, nil
 		}
@@ -134,40 +104,40 @@ func (l *Listener) Addr() net.Addr {
 }
 
 func (l *Listener) loop() {
+	tk := time.NewTicker(5 * time.Second)
 FOR:
 	for {
 		select {
 		case <-l.close:
 			return
-		case dc := <-l.accept:
-			switch dc.Label().ChannelType {
-			case conn.Web:
-				l.acceptWeb <- dc
-			case conn.Ssh:
-				l.acceptSsh <- dc
-			case conn.File:
-				l.acceptFile <- dc
-			case conn.Proxy:
-				l.acceptProxy <- dc
+		case <-tk.C:
+			if l.sig.IsClose() {
+				l.sig = conn.NewWsBackendSigClient(l.id, l.wsURL, l.clusterName)
+				go func() {
+					if err := l.sig.Run(context.TODO()); err != nil {
+						logrus.Errorf("client run error:%v", err)
+					}
+					l.sig.Close(context.Background())
+				}()
 			}
-		case clientId := <-l.sigClient.NewClient():
-			logrus.Debugf("recv new client: %s", clientId)
-			if _, ok := l.GetPeer(clientId); ok {
-				logrus.Debugf("client %s already connected", clientId)
+		case remoteId := <-l.sig.NewPeer():
+			logrus.Debugf("recv new client: %s", remoteId)
+			if _, ok := l.GetPeer(remoteId); ok {
+				logrus.Debugf("client %s already connected", remoteId)
 				continue FOR
 			}
-			pc, err := webrtc.NewPeerConnection(ice.Config)
+
+			p, err := conn.NewAnswerPeer(l.sig, "", remoteId, l.accept)
 			if err != nil {
-				logrus.Errorf("new peer sig failed:%v", err)
-				continue
+				logrus.Debugf("new peer error:%v", err)
+				return
 			}
 
-			p := conn.NewAnswerPeer(pc, l.serverName, clientId, l.sigClient, l.accept)
-			l.AddPeer(clientId, p)
+			l.AddPeer(remoteId, p)
 			go func() {
-				if err := p.Connect(context.TODO()); err != nil {
+				if err := p.Listen(context.TODO()); err != nil {
 					logrus.Errorf("peer connect failed:%v", err)
-					l.DelPeer(clientId)
+					l.DelPeer(remoteId)
 					return
 				}
 			}()

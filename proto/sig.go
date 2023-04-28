@@ -63,3 +63,11 @@ type FetchAck struct {
 	Sdp        *webrtc.SessionDescription `json:"sdp,omitempty"`
 	Candidates []*webrtc.ICECandidate     `json:"ices,omitempty"`
 }
+
+type GetClusterReq struct {
+	Name string `form:"name"`
+}
+
+type GetClusterAck struct {
+	Ids []string `json:"ids"`
+}

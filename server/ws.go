@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/proto"
 )
 
 func (s *Server) WsSignalling(c *gin.Context) {
@@ -19,35 +20,6 @@ func (s *Server) WsSignalling(c *gin.Context) {
 		c.String(http.StatusBadRequest, "upgrade failed, error:%v", err)
 	}
 	go s.HandleWs(c.Request.Context(), conn)
-}
-
-type PeerType string
-
-const (
-	PeerBackend  = "b"
-	PeerFrontend = "f"
-)
-
-func (t PeerType) String() string {
-	switch t {
-	case PeerBackend:
-		return "backend"
-	case PeerFrontend:
-		return "frontend"
-	}
-	return string(t)
-}
-
-type WsHeader struct {
-	Type PeerType `json:"type"`
-	Id   string   `json:"id"`
-	Name string   `json:"name"` // backend cluster name
-}
-
-type Packet struct {
-	TargetId     string                     `json:"tid"`
-	Sdp          *webrtc.SessionDescription `json:"sdp,omitempty"`
-	ICECandidate *webrtc.ICECandidate       `json:"ice,omitempty"`
 }
 
 func (s *Server) HandleWs(ctx context.Context, conn *websocket.Conn) (err error) {
@@ -65,7 +37,7 @@ func (s *Server) HandleWs(ctx context.Context, conn *websocket.Conn) (err error)
 		}
 	}()
 
-	var header = WsHeader{}
+	var header = proto.WsHeader{}
 	err = conn.ReadJSON(&header)
 	if err != nil {
 		return err
@@ -73,17 +45,17 @@ func (s *Server) HandleWs(ctx context.Context, conn *websocket.Conn) (err error)
 
 	defer func() {
 		switch header.Type {
-		case PeerBackend:
+		case webrtc.SDPTypeAnswer:
 			s.DelBackend(header.Name, header.Id)
-		case PeerFrontend:
+		case webrtc.SDPTypeOffer:
 			s.DelFrontend(header.Name, header.Id)
 		}
 	}()
 
 	switch header.Type {
-	case PeerBackend:
+	case webrtc.SDPTypeAnswer:
 		s.AddBackend(header.Name, header.Id, conn)
-	case PeerFrontend:
+	case webrtc.SDPTypeOffer:
 		if !s.AddFrontend(header.Name, header.Id, conn) {
 			return errors.New("cluster has no backend")
 		}
@@ -92,7 +64,7 @@ func (s *Server) HandleWs(ctx context.Context, conn *websocket.Conn) (err error)
 	}
 
 	for {
-		var packet Packet
+		var packet proto.Packet
 		err := conn.ReadJSON(&packet)
 		if err == io.EOF {
 			return nil
@@ -101,18 +73,21 @@ func (s *Server) HandleWs(ctx context.Context, conn *websocket.Conn) (err error)
 			return err
 		}
 
-		var target *Client
+		var client *Client
 		switch header.Type {
-		case PeerBackend:
-			target, _ = s.GetFrontend(header.Name, packet.TargetId)
-		case PeerFrontend:
-			target, _ = s.GetFrontend(header.Name, packet.TargetId)
+		case webrtc.SDPTypeAnswer:
+			client, _ = s.GetFrontend(header.Name, packet.From.ClientId)
+		case webrtc.SDPTypeOffer:
+			client, _ = s.GetBackend(header.Name, packet.From.ClientId)
 		}
-		if target == nil {
-			logrus.Errorf("cannot find target:%s", packet.TargetId)
+		if client == nil {
+			logrus.Errorf("cannot find target:%s", packet.From.ClientId)
 			continue
 		}
-		if err := target.Send(packet); err != nil {
+
+		packet.To.ClientId = client.Peers[packet.From.PeerId]
+
+		if err := client.Send(packet); err != nil {
 			return err
 		}
 	}

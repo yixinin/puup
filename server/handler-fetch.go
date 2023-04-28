@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yixinin/puup/proto"
 )
 
 // func (s *Server) Fetch(c *gin.Context) {
@@ -76,17 +77,9 @@ import (
 // 	b.DelSession(req.Id)
 // }
 
-type GetClusterReq struct {
-	Name string `form:"name"`
-}
-
-type GetClusterAck struct {
-	Ids []string `json:"ids"`
-}
-
 func (s *Server) Cluster(c *gin.Context) {
-	var req GetClusterReq
-	var ack GetClusterAck
+	var req proto.GetClusterReq
+	var ack proto.GetClusterAck
 	c.BindQuery(&req)
 	if req.Name != "" {
 		ack.Ids = s.GetBackends(req.Name)

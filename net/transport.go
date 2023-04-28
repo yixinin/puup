@@ -23,7 +23,7 @@ func NewTransport(sigAddr, name string) (*Transport, error) {
 	}
 	wt.client = NewPeersClient()
 
-	_, err := wt.client.Connect(sigAddr, name)
+	err := wt.client.Connect(sigAddr, name)
 	if err != nil {
 		return nil, err
 	}

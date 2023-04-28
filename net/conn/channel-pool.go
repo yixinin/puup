@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/yixinin/puup/stderr"
@@ -13,9 +14,12 @@ import (
 type ChannelPool struct {
 	sync.RWMutex
 
-	serverName, clientId string
+	clusterName    string
+	Type           webrtc.SDPType
+	Id             string
+	RemoteId       string
+	RemoteClientId string
 
-	Type    webrtc.SDPType
 	idles   map[string]ReadWriterReleaser
 	actives map[string]ReadWriterReleaser
 	pc      *webrtc.PeerConnection
@@ -28,16 +32,18 @@ type ChannelPool struct {
 	close chan struct{}
 }
 
-func NewChannelPool(serverName, clientId string, pc *webrtc.PeerConnection, t webrtc.SDPType) *ChannelPool {
+func NewChannelPool(pc *webrtc.PeerConnection, rid, rcid string, pt webrtc.SDPType) *ChannelPool {
 	pool := &ChannelPool{
-		Type:       t,
-		serverName: serverName,
-		clientId:   clientId,
-		idles:      make(map[string]ReadWriterReleaser, 8),
-		actives:    make(map[string]ReadWriterReleaser, 8),
-		pc:         pc,
-		release:    make(chan ReadWriterReleaser, 1),
-		close:      make(chan struct{}),
+		Id:             uuid.NewString(),
+		RemoteId:       rid,
+		RemoteClientId: rcid,
+		Type:           pt,
+
+		idles:   make(map[string]ReadWriterReleaser, 8),
+		actives: make(map[string]ReadWriterReleaser, 8),
+		pc:      pc,
+		release: make(chan ReadWriterReleaser, 1),
+		close:   make(chan struct{}),
 	}
 	go pool.loop(context.TODO())
 	return pool
@@ -95,7 +101,7 @@ func (p *ChannelPool) Get(ct ChannelType, labels ...string) (ch ReadWriterReleas
 		if err != nil {
 			return nil, err
 		}
-		ch = NewOfferChannel(p.serverName, p.clientId, dc, label, p.release)
+		ch = NewOfferChannel(p.clusterName, p.Id, dc, label, p.release)
 		if ch.TakeConn() {
 			return ch, nil
 		}
@@ -115,7 +121,7 @@ func (p *ChannelPool) OnChannelOpen(dc *webrtc.DataChannel) error {
 		return nil
 	}
 	if _, ok := p.idles[dc.Label()]; !ok {
-		p.idles[dc.Label()] = NewAnswerChannel(p.serverName, p.clientId, dc, label, p.accept, p.release)
+		p.idles[dc.Label()] = NewAnswerChannel(p.clusterName, p.Id, dc, label, p.accept, p.release)
 	}
 
 	return nil

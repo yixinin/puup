@@ -6,6 +6,7 @@ import (
 
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
+	"github.com/yixinin/puup/proto"
 	"github.com/yixinin/puup/stderr"
 )
 
@@ -18,7 +19,18 @@ func (p *Peer) SendOffer(ctx context.Context) error {
 		return stderr.Wrap(err)
 	}
 	logrus.Debugf("send %s sdp", offer.Type)
-	if err := p.sigCli.SendSdp(ctx, p.clientId, offer); err != nil {
+	var packet = proto.Packet{
+		From: proto.Client{
+			ClientId: p.sig.Id(),
+			PeerId:   p.Id,
+		},
+		To: proto.Client{
+			PeerId:   p.RemoteId,
+			ClientId: p.RemoteClientId,
+		},
+		Sdp: &offer,
+	}
+	if err := p.sig.SendPacket(ctx, packet); err != nil {
 		return stderr.Wrap(err)
 	}
 	return nil
@@ -33,16 +45,24 @@ func (p *Peer) SendAnswer(ctx context.Context) error {
 	if err := p.pc.SetLocalDescription(answer); err != nil {
 		return stderr.Wrap(err)
 	}
-	if err := p.sigCli.SendSdp(ctx, p.clientId, answer); err != nil {
+	var packet = proto.Packet{
+		From: proto.Client{
+			ClientId: p.sig.Id(),
+			PeerId:   p.Id,
+		},
+		To: proto.Client{
+			PeerId:   p.RemoteId,
+			ClientId: p.RemoteClientId,
+		},
+		Sdp: &answer,
+	}
+	if err := p.sig.SendPacket(ctx, packet); err != nil {
 		return stderr.Wrap(err)
 	}
 	return nil
 }
 
 func (p *Peer) WaitAnswer(ctx context.Context) error {
-	defer p.sigCli.Offline(context.Background(), p.clientId)
-	var answetTick = time.NewTicker(2 * time.Second)
-	defer answetTick.Stop()
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for {
@@ -51,7 +71,10 @@ func (p *Peer) WaitAnswer(ctx context.Context) error {
 			return ctx.Err()
 		case <-p.connected:
 			return nil
-		case sdp := <-p.sigCli.RemoteSdp(p.clientId):
+		case sdp, ok := <-p.sig.RemoteSdp(p.RemoteId):
+			if !ok {
+				return nil
+			}
 			logrus.Debugf("recv %s sdp, %s < %s", sdp.Type, p.pc.ConnectionState(), webrtc.PeerConnectionStateConnected)
 			if p.pc.ConnectionState() < webrtc.PeerConnectionStateConnected {
 				err := p.pc.SetRemoteDescription(sdp)
@@ -59,7 +82,7 @@ func (p *Peer) WaitAnswer(ctx context.Context) error {
 					return stderr.Wrap(err)
 				}
 			}
-		case ice := <-p.sigCli.RemoteIceCandidates(p.clientId):
+		case ice := <-p.sig.RemoteIceCandidates(p.RemoteId):
 			logrus.Debugf("recv ice, %s < %s", p.pc.ICEConnectionState(), webrtc.ICEConnectionStateConnected)
 			if p.pc.ICEConnectionState() < webrtc.ICEConnectionStateConnected {
 				err := p.pc.AddICECandidate(ice.ToJSON())
@@ -71,7 +94,6 @@ func (p *Peer) WaitAnswer(ctx context.Context) error {
 	}
 }
 func (p *Peer) PollOffer(ctx context.Context) error {
-	defer p.sigCli.Offline(context.Background(), p.clientId)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	for {
@@ -80,7 +102,10 @@ func (p *Peer) PollOffer(ctx context.Context) error {
 			return ctx.Err()
 		case <-p.connected:
 			return nil
-		case sdp := <-p.sigCli.RemoteSdp(p.clientId):
+		case sdp, ok := <-p.sig.RemoteSdp(p.RemoteId):
+			if !ok {
+				return nil
+			}
 			logrus.Debugf("recv %s sdp, %s < %s", sdp.Type, p.pc.ConnectionState(), webrtc.PeerConnectionStateConnected)
 			if p.pc.ConnectionState() < webrtc.PeerConnectionStateConnected {
 				err := p.pc.SetRemoteDescription(sdp)
@@ -91,7 +116,7 @@ func (p *Peer) PollOffer(ctx context.Context) error {
 					return err
 				}
 			}
-		case ice := <-p.sigCli.RemoteIceCandidates(p.clientId):
+		case ice := <-p.sig.RemoteIceCandidates(p.RemoteId):
 			logrus.Debugf("recv ice, %s < %s", p.pc.ICEConnectionState(), webrtc.ICEConnectionStateConnected)
 			if p.pc.ICEConnectionState() < webrtc.ICEConnectionStateConnected {
 				err := p.pc.AddICECandidate(ice.ToJSON())
